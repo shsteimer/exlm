@@ -1,5 +1,5 @@
 mountpoints:
   /:
-    url: https://51837-exlmconverter-dev.adobeioruntime.net/api/v1/web/main/convert
+    url: https://737b-174-34-208-120.ngrok-free.app
     type: markup
     suffix: '.md'
