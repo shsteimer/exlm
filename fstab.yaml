@@ -1,5 +1,5 @@
 mountpoints:
   /:
-    url: https://737b-174-34-208-120.ngrok-free.app
+    url: https://316182-410goldpike.adobeioruntime.net/api/v1/web/main/convert
     type: markup
     suffix: '.md'
