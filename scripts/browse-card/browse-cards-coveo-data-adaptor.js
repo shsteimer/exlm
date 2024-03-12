@@ -1,7 +1,6 @@
-import { fetchPlaceholders } from '../lib-franklin.js';
 import browseCardDataModel from '../data-model/browse-cards-model.js';
 import { CONTENT_TYPES } from './browse-cards-constants.js';
-import { rewriteDocsPath } from '../scripts.js';
+import { rewriteDocsPath, fetchLanguagePlaceholders } from '../scripts.js';
 
 /**
  * Module that provides functionality for adapting Coveo search results to BrowseCards data model.
@@ -31,10 +30,40 @@ const BrowseCardsCoveoDataAdaptor = (() => {
       /* TODO: Will enable once we have the API changes ready from ExL */
       // tags.push({ icon: 'book', text: `0 ${placeholders.lesson}` });
     } else {
-      tags.push({ icon: result?.raw?.el_view_status ? 'view' : '', text: result?.raw?.el_view_status || '' });
-      tags.push({ icon: result?.raw?.el_reply_status ? 'reply' : '', text: result?.raw?.el_reply_status || '' });
+      tags.push({
+        icon: result?.parentResult?.raw?.el_view_status || result?.raw?.el_view_status ? 'view' : '',
+        text: result?.parentResult?.raw?.el_view_status || result?.raw?.el_view_status || '',
+      });
+      tags.push({
+        icon: result?.parentResult?.raw?.el_reply_status || result?.raw?.el_reply_status ? 'reply' : '',
+        text: result?.parentResult?.raw?.el_reply_status || result?.raw?.el_reply_status || '',
+      });
     }
     return tags;
+  };
+
+  /**
+   * Removes duplicate items from an array of products/solutions (with sub-solutions)
+   * @param {Array} products - Array of products to remove duplicates from.
+   * @returns {Array} - Array of unique products.
+   */
+  const removeProductDuplicates = (products) => {
+    const filteredProducts = [];
+    for (let outerIndex = 0; outerIndex < products.length; outerIndex += 1) {
+      const currentItem = products[outerIndex];
+      let isDuplicate = false;
+      for (let innerIndex = 0; innerIndex < products.length; innerIndex += 1) {
+        if (outerIndex !== innerIndex && products[innerIndex].startsWith(currentItem)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (!isDuplicate) {
+        const product = products[outerIndex].replace(/\|/g, ' ');
+        filteredProducts.push(product);
+      }
+    }
+    return filteredProducts;
   };
 
   /**
@@ -54,13 +83,16 @@ const BrowseCardsCoveoDataAdaptor = (() => {
     } else {
       contentType = Array.isArray(el_contenttype) ? el_contenttype[0]?.trim() : el_contenttype?.trim();
     }
-    let product = el_product && (Array.isArray(el_product) ? el_product : el_product.split(/,\s*/));
-    if (!product && el_solution) {
-      product = el_solution && (Array.isArray(el_solution) ? el_solution : el_solution.split(/,\s*/));
+    let products;
+    if (el_solution) {
+      products = Array.isArray(el_solution) ? el_solution : el_solution.split(/,\s*/);
+    } else if (el_product) {
+      products = Array.isArray(el_product) ? el_product : el_product.split(/,\s*/);
     }
     const tags = createTags(result, contentType.toLowerCase());
-    let url = parentResult?.clickableuri || parentResult?.uri || clickUri || uri || '';
-    url = rewriteDocsPath(url, true);
+    let url = parentResult?.clickUri || parentResult?.uri || clickUri || uri || '';
+    url = rewriteDocsPath(url);
+    const contentTypeTitleCase = convertToTitleCase(contentType?.toLowerCase());
 
     return {
       ...browseCardDataModel,
@@ -73,13 +105,13 @@ const BrowseCardsCoveoDataAdaptor = (() => {
             ? raw.video_url.replace(/\?.*/, '?format=jpeg')
             : `${raw.video_url}?format=jpeg`)) ||
         '',
-      product,
+      product: products && removeProductDuplicates(products),
       title: parentResult?.title || title || '',
       description: parentResult?.excerpt || excerpt || '',
       tags,
       copyLink: url,
       viewLink: url,
-      viewLinkText: placeholders[`viewLink${convertToTitleCase(contentType)}`] || 'View',
+      viewLinkText: placeholders[`browseCard${contentTypeTitleCase}ViewLabel`] || 'View',
     };
   };
 
@@ -90,7 +122,7 @@ const BrowseCardsCoveoDataAdaptor = (() => {
    */
   const mapResultsToCardsData = async (data) => {
     try {
-      placeholders = await fetchPlaceholders();
+      placeholders = await fetchLanguagePlaceholders();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Error fetching placeholders:', err);

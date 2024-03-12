@@ -1,5 +1,11 @@
-import { decorateIcons, getMetadata, fetchPlaceholders } from '../../scripts/lib-franklin.js';
-import { createTag, htmlToElement, debounce } from '../../scripts/scripts.js';
+import { decorateIcons, getMetadata } from '../../scripts/lib-franklin.js';
+import {
+  createTag,
+  htmlToElement,
+  debounce,
+  getPathDetails,
+  fetchLanguagePlaceholders,
+} from '../../scripts/scripts.js';
 import {
   roleOptions,
   contentTypeOptions,
@@ -7,29 +13,29 @@ import {
   getObjectByName,
   getFiltersPaginationText,
   getBrowseFiltersResultCount,
+  getSelectedTopics,
+  getParsedSolutionsQuery,
+  getCoveoFacets,
+  getObjectById,
 } from './browse-filter-utils.js';
 import initiateCoveoHeadlessSearch, { fragment } from '../../scripts/coveo-headless/index.js';
 import BrowseCardsCoveoDataAdaptor from '../../scripts/browse-card/browse-cards-coveo-data-adaptor.js';
 import { buildCard } from '../../scripts/browse-card/browse-card.js';
 import BuildPlaceholder from '../../scripts/browse-card/browse-card-placeholder.js';
-import { formattedTopicsTags, handleTopicSelection } from './browse-topics.js';
+import { formattedTags, handleTopicSelection, dispatchCoveoAdvancedQuery } from './browse-topics.js';
+import { BASE_COVEO_ADVANCED_QUERY } from '../../scripts/browse-card/browse-cards-constants.js';
 
 const coveoFacetMap = {
-  Role: 'headlessRoleFacet',
-  'Content Type': 'headlessTypeFacet',
-  'Experience Level': 'headlessExperienceFacet',
+  el_role: 'headlessRoleFacet',
+  el_contenttype: 'headlessTypeFacet',
+  el_level: 'headlessExperienceFacet',
 };
 
-const coveoFacetFilterNameMap = {
-  el_type: 'Content Type',
-  el_role: 'Role',
-  el_level: 'Experience Level',
-};
 const CLASS_BROWSE_FILTER_FORM = '.browse-filters-form';
 
 let placeholders = {};
 try {
-  placeholders = await fetchPlaceholders();
+  placeholders = await fetchLanguagePlaceholders();
 } catch (err) {
   // eslint-disable-next-line no-console
   console.error('Error fetching placeholders:', err);
@@ -68,7 +74,8 @@ function hideSectionsBelowFilter(block, show) {
     // eslint-disable-next-line no-plusplus
     for (let i = clickedIndex + 1; i < siblings.length; i++) {
       if (!siblings[i].classList.contains('browse-rail')) {
-        siblings[i].style.display = show ? 'block' : 'none';
+        const classOp = show ? 'remove' : 'add';
+        siblings[i].classList?.[classOp]('browse-hide-section');
       }
     }
   }
@@ -95,15 +102,33 @@ function updateClearFilterStatus(block) {
     return acc;
   }, []);
   const hasActiveTopics = block.querySelector('.browse-topics') !== null && selectedTopics.length > 0;
-  const browseFiltersSection = document.querySelector('.browse-filters-form');
+  const browseFiltersContainer = document.querySelector('.browse-filters-container');
+  const browseFiltersSection = browseFiltersContainer.querySelector('.browse-filters-form');
+  const selectionContainer = browseFiltersSection.querySelector('.browse-filters-input-container');
+  const containsSelection = selectionContainer.classList.contains('browse-filters-input-selected');
+  const coveoQueryConfig = { query: '', fireSelection: true };
+  let dispatchCoveoQuery = false;
   if (hasActiveTopics || tagsProxy.length !== 0 || searchEl.value) {
     clearFilterBtn.disabled = false;
     hideSectionsBelowFilter(block, false);
+    browseFiltersContainer.classList.add('browse-filters-full-container');
+    selectionContainer.classList.add('browse-filters-input-selected');
+    if (!containsSelection && window.headlessBaseSolutionQuery) {
+      coveoQueryConfig.query = window.headlessBaseSolutionQuery;
+      coveoQueryConfig.fireSelection = false;
+      dispatchCoveoQuery = true;
+    }
     hildeSectionsWithinFilter(browseFiltersSection, true);
   } else {
+    dispatchCoveoQuery = true;
     clearFilterBtn.disabled = true;
     hideSectionsBelowFilter(block, true);
+    browseFiltersContainer.classList.remove('browse-filters-full-container');
+    selectionContainer.classList.remove('browse-filters-input-selected');
     hildeSectionsWithinFilter(browseFiltersSection, false);
+  }
+  if (dispatchCoveoQuery) {
+    dispatchCoveoAdvancedQuery(coveoQueryConfig);
   }
 }
 
@@ -136,7 +161,7 @@ function generateCheckboxItem(item, index, id) {
 
 const constructDropdownEl = (options, id) =>
   htmlToElement(`
-    <div class="filter-dropdown filter-input" data-filter-type="${options.name}">
+    <div class="filter-dropdown filter-input" data-filter-type="${options.id}">
       <button>
         ${options.name}
         <span class="icon icon-chevron"></span>
@@ -209,10 +234,11 @@ function removeFromTags(block, value) {
 }
 
 function updateCountAndCheckedState(block, name, value) {
-  const tagRole = block.querySelector(`.filter-dropdown[data-filter-type="${name}"]`);
+  const ddObject = getObjectByName(dropdownOptions, name);
+  const tagRole = block.querySelector(`.filter-dropdown[data-filter-type="${ddObject.id}"]`);
   const btnEl = tagRole.querySelector(':scope > button');
   const ddOptions = [...tagRole.querySelector('.filter-dropdown-content').children];
-  const ddObject = getObjectByName(dropdownOptions, name);
+
   ddObject.selected = 0;
 
   function syncCheckedState(option) {
@@ -236,13 +262,17 @@ function handleTagsClick(block) {
     const isTag = event.target.closest('.browse-tags');
     if (isTag) {
       const name = isTag.querySelector('span:nth-child(1)').textContent.trim();
+      const dropDownObj = getObjectByName(dropdownOptions, name);
       const { value } = isTag;
-      const coveoFacetKey = coveoFacetMap[name];
+      const coveoFacetKey = coveoFacetMap[dropDownObj.id];
       const coveoFacet = window[coveoFacetKey];
       if (coveoFacet) {
-        coveoFacet.toggleSelect({
-          state: 'idle',
-          value,
+        const facets = getCoveoFacets(value, false);
+        facets.forEach(({ state, value: facetValue }) => {
+          coveoFacet.toggleSelect({
+            state,
+            value: facetValue,
+          });
         });
       }
       removeFromTags(block, value);
@@ -259,10 +289,12 @@ function handleCheckboxClick(block, el, options) {
   // Function to handle checkbox state changes
   function handleCheckboxChange(event) {
     const checkbox = event.target;
-    const name = checkbox.closest('.filter-dropdown').dataset.filterType;
+    const { filterType } = checkbox.closest('.filter-dropdown').dataset;
     const label = checkbox?.dataset.label || '';
     const { checked: isChecked, value } = checkbox;
-    const coveoFacetKey = coveoFacetMap[name];
+    const dropDownObj = getObjectById(dropdownOptions, filterType);
+    const { name } = dropDownObj;
+    const coveoFacetKey = coveoFacetMap[dropDownObj.id];
     const coveoFacet = window[coveoFacetKey];
     if (isChecked) {
       options.selected += 1;
@@ -273,21 +305,31 @@ function handleCheckboxClick(block, el, options) {
       });
 
       if (coveoFacet) {
-        coveoFacet.toggleSelect({
-          state: 'selected',
-          value,
+        const facets = getCoveoFacets(value, true);
+        facets.forEach(({ state, value: facetValue }) => {
+          coveoFacet.toggleSelect({
+            state,
+            value: facetValue,
+          });
         });
       }
     } else {
       options.selected -= 1;
-      removeFromTags(block, label);
+      removeFromTags(block, value);
 
       if (coveoFacet) {
-        coveoFacet.toggleSelect({
-          state: 'idle',
-          value,
+        const facets = getCoveoFacets(value, false);
+        facets.forEach(({ state, value: facetValue }) => {
+          coveoFacet.toggleSelect({
+            state,
+            value: facetValue,
+          });
         });
       }
+    }
+    const optionsAreSelected = !!dropdownOptions.find((opt) => opt.selected > 0);
+    if (optionsAreSelected) {
+      handleTopicSelection();
     }
     if (options.selected !== 0) btnEl.firstChild.textContent = `${options.name} (${options.selected})`;
     if (options.selected === 0) btnEl.firstChild.textContent = `${options.name}`;
@@ -325,7 +367,7 @@ function appendFormEl(block) {
 }
 
 function addLabel(block) {
-  const labelEl = createTag('label', { class: 'browse-filters-label' }, 'Filters');
+  const labelEl = createTag('label', { class: 'browse-filters-label' }, placeholders.filterLabel);
   appendToFormInputContainer(block, labelEl);
 }
 
@@ -333,7 +375,7 @@ function constructKeywordSearchEl(block) {
   const searchEl = htmlToElement(`
     <div class="filter-input filter-input-search">
       <span class="icon icon-search"></span>
-      <input type="search" placeholder="Keyword search">
+      <input type="search" placeholder="${placeholders.filterKeywordSearch}">
     </div>
   `);
   appendToFormInputContainer(block, searchEl);
@@ -348,20 +390,22 @@ function onInputSearch(block) {
       console.log('add search logic here');
     }
   });
+}
 
-  searchEl.addEventListener('input', () => {
-    updateClearFilterStatus(block);
-  });
+function removeTopicSelections(block) {
+  block
+    .querySelectorAll('.browse-topics-item-active')
+    .forEach((element) => element.classList.remove('browse-topics-item-active'));
 }
 
 function uncheckAllFiltersFromDropdown(block) {
   const dropdownFilters = block.querySelectorAll('.filter-dropdown');
   dropdownFilters.forEach((dropdownEl) => {
     const { filterType } = dropdownEl.dataset;
-    const dropdownObj = getObjectByName(dropdownOptions, filterType);
+    const dropdownObj = getObjectById(dropdownOptions, filterType);
 
     dropdownObj.selected = 0;
-    dropdownEl.querySelector(':scope > button').firstChild.textContent = filterType;
+    dropdownEl.querySelector(':scope > button').firstChild.textContent = dropdownObj.name;
 
     const dOptions = dropdownEl.querySelectorAll('.filter-dropdown-content > .custom-checkbox');
     dOptions.forEach((option) => {
@@ -382,10 +426,12 @@ function clearSearchQuery(block) {
 }
 
 function clearSelectedFilters(block) {
+  removeTopicSelections(block);
   uncheckAllFiltersFromDropdown(block);
   clearAllSelectedTag(block);
   clearSearchQuery(block);
   updateClearFilterStatus(block);
+
   const hash = window.location.hash.substr(1); // Remove the '#' character
   let params = new URLSearchParams(hash);
 
@@ -415,7 +461,7 @@ function handleClearFilter(block) {
 
 function constructClearFilterBtn(block) {
   const clearBtn = htmlToElement(`
-    <button class="browse-filters-clear" disabled>Clear filters</button>
+    <button class="browse-filters-clear" disabled>${placeholders.filterClearLabel}</button>
   `);
   appendToFormInputContainer(block, clearBtn);
 }
@@ -477,36 +523,43 @@ function handleUriHash() {
 
   filtersInfo.forEach((filterInfo) => {
     const [facetKeys, facetValueInfo] = filterInfo.split('=');
-    const facetKey = facetKeys.replace('f-', '');
     const facetValues = facetValueInfo.split(',');
-    // console.log('facetKey', facetKey);
-    // console.log('facetValues', facetValues);
-    const keyName = coveoFacetFilterNameMap[facetKey];
-    if (keyName) {
+    const keyName = facetKeys.replace('f-', '');
+
+    if (Object.keys(coveoFacetMap).includes(keyName)) {
       const filterOptionEl = browseFiltersSection.querySelector(`.filter-dropdown[data-filter-type="${keyName}"]`);
       if (filterOptionEl) {
-        facetValues.forEach((facetValue) => {
+        const ddObject = getObjectById(dropdownOptions, keyName);
+        const { name } = ddObject;
+        facetValues.forEach((facetValueString) => {
+          const [facetValue] = facetValueString.split('|');
           const inputEl = filterOptionEl.querySelector(`input[value="${facetValue}"]`);
-          const label = inputEl?.dataset.label || '';
-
-          inputEl.checked = true;
-          appendTag(browseFiltersSection, {
-            name: keyName,
-            label,
-            value: facetValue,
-          });
+          if (!inputEl.checked) {
+            const label = inputEl?.dataset.label || '';
+            inputEl.checked = true;
+            appendTag(browseFiltersSection, {
+              name,
+              label,
+              value: facetValue,
+            });
+          }
         });
-        const ddObject = getObjectByName(dropdownOptions, keyName);
         const btnEl = filterOptionEl.querySelector(':scope > button');
-        const selectedCount = facetValues.length;
+        const selectedCount = facetValues.reduce((acc, curr) => {
+          const [key] = curr.split('|');
+          if (!acc.includes(key)) {
+            acc.push(key);
+          }
+          return acc;
+        }, []).length;
         ddObject.selected = selectedCount;
         if (selectedCount === 0) {
-          btnEl.firstChild.textContent = keyName;
+          btnEl.firstChild.textContent = name;
         } else {
-          btnEl.firstChild.textContent = `${keyName} (${selectedCount})`;
+          btnEl.firstChild.textContent = `${name} (${selectedCount})`;
         }
       }
-    } else if (facetKey === 'q') {
+    } else if (keyName === 'q') {
       containsSearchQuery = true;
       const [searchValue] = facetValues;
       if (searchValue) {
@@ -514,10 +567,25 @@ function handleUriHash() {
       } else {
         searchInput.value = '';
       }
+    } else if (keyName === 'aq' && filterInfo) {
+      const selectedTopics = getSelectedTopics(filterInfo);
+      const contentDiv = document.querySelector('.browse-topics');
+      const buttons = contentDiv.querySelectorAll('button');
+      Array.from(buttons).forEach((button) => {
+        const matchFound = selectedTopics.find((topic) => button.dataset.topicname?.includes(topic));
+        if (matchFound) {
+          button.classList.add('browse-topics-item-active');
+        } else {
+          button.classList.remove('browse-topics-item-active');
+        }
+      });
     }
   });
   if (!containsSearchQuery) {
     searchInput.value = '';
+  }
+  if (filtersInfo.length && window.headlessBaseSolutionQuery) {
+    handleTopicSelection();
   }
   updateClearFilterStatus(browseFiltersSection);
   window.headlessSearchEngine.executeFirstSearch();
@@ -548,6 +616,9 @@ function constructFilterPagination(block) {
           return;
         }
         window.headlessPager.selectPage(newPageNumber);
+        const fireSelection = true;
+        const resetPageIndex = false;
+        handleTopicSelection(browseFiltersSection, fireSelection, resetPageIndex);
       }
     });
   });
@@ -588,11 +659,12 @@ function constructFilterPagination(block) {
 }
 
 function renderPageNumbers() {
-  const filtersPaginationEl = document.querySelector('.browse-filters-pagination');
+  const browseFiltersBlock = document.querySelector('.browse-filters');
+  const filtersPaginationEl = browseFiltersBlock?.querySelector('.browse-filters-pagination');
   if (!filtersPaginationEl || !window.headlessPager) {
     return;
   }
-
+  const browseResults = browseFiltersBlock.querySelector('.browse-filters-results');
   const currentPageNumber = window.headlessPager?.state?.currentPage || 1;
   const pgCount = window.headlessPager?.state?.maxPage || 1;
   const paginationTextEl = filtersPaginationEl.querySelector('.browse-filters-pagination-text');
@@ -618,8 +690,10 @@ function renderPageNumbers() {
   }
   if (pgCount === 1) {
     filtersPaginationEl.classList.add('browse-filters-pagination-hidden');
+    browseResults.classList.add('browse-filters-one-pg-result');
   } else {
     filtersPaginationEl.classList.remove('browse-filters-pagination-hidden');
+    browseResults.classList.remove('browse-filters-one-pg-result');
   }
 }
 
@@ -630,7 +704,16 @@ function renderSearchQuerySummary() {
   }
   const numberFormat = new Intl.NumberFormat('en-US');
   const resultsCount = window.headlessQuerySummary.state.total;
-  queryEl.textContent = !resultsCount ? '' : `Showing ${numberFormat.format(resultsCount)} assets`;
+  let assetString;
+  if (!resultsCount) {
+    assetString = '';
+  } else if (resultsCount === 1) {
+    assetString = placeholders.showAsset || 'Showing 1 asset';
+  } else {
+    const formattedCount = numberFormat.format(resultsCount);
+    assetString = placeholders.showAssets?.replace('{x}', formattedCount) || `Showing ${formattedCount} assets`;
+  }
+  queryEl.textContent = assetString;
 }
 
 function handleCoveoHeadlessSearch(
@@ -694,7 +777,6 @@ async function handleSearchEngineSubscription() {
         buildCard(filterResultsEl, cardDiv, cardData);
         filterResultsEl.appendChild(cardDiv);
       });
-      decorateIcons(filterResultsEl);
       browseFilterForm.classList.add('is-result');
       filterResultsEl.classList.remove('no-results');
     } catch (err) {
@@ -703,7 +785,19 @@ async function handleSearchEngineSubscription() {
     }
   } else {
     buildCardsShimmer.remove();
-    filterResultsEl.innerHTML = placeholders.noResultsTextBrowse || 'No Results';
+    const communityOptionIsSelected = browseFilterForm.querySelector(`input[value="Community"]`)?.checked === true;
+    let noResultsText = placeholders.noResultsTextBrowse || 'No Results';
+    if (
+      communityOptionIsSelected &&
+      !!dropdownOptions.find((opt) => (opt.id === 'el_role' || opt.id === 'el_level') && opt.selected > 0)
+    ) {
+      const containsExperienceLevel = !!dropdownOptions.find((opt) => opt.id === 'el_level');
+      const textKey = containsExperienceLevel
+        ? 'rolesAndExpWithCommunitySelectionWarning'
+        : 'rolesWithCommunitySelectionWarning';
+      noResultsText = placeholders[textKey] ?? 'To view Community posts, please remove all Role selections';
+    }
+    filterResultsEl.innerHTML = noResultsText;
     browseFilterForm.classList.remove('is-result');
     filterResultsEl.classList.add('no-results');
   }
@@ -713,8 +807,8 @@ function renderSortContainer(block) {
   const wrapper = block.querySelector('.browse-filters-form .browse-filters-results-header');
   const sortContainer = document.createElement('div');
   sortContainer.classList.add('sort-container');
-  sortContainer.innerHTML = `<span>Sort</span>
-                  <button class="sort-drop-btn">Relevance</button>`;
+  sortContainer.innerHTML = `<span>${placeholders.filterSortLabel}</span>
+                  <button class="sort-drop-btn">${placeholders.filterSortRelevanceLabel}</button>`;
 
   wrapper.appendChild(sortContainer);
 
@@ -743,18 +837,29 @@ function renderSortContainer(block) {
 }
 
 function decorateBrowseTopics(block) {
-  const firstChild = block.querySelector('div:first-child');
-  const secondChild = block.querySelector('div:nth-child(2)');
-  const headingElement = block.querySelector('div:nth-child(1) > div');
-  const topics = block.querySelector('div:nth-child(2) > div').textContent.trim();
-  const allTopicsTags = topics !== '' ? formattedTopicsTags(topics) : '';
+  const { lang } = getPathDetails();
+  const [...configs] = [...block.children].map((row) => row.firstElementChild);
+
+  const [solutionsElement, headingElement, topicsElement] = configs.map((cell) => cell);
+  const [solutionsContent, headingContent, topicsContent] = configs.map((cell) => cell?.textContent?.trim() ?? '');
+
+  // eslint-disable-next-line no-unused-vars
+  const allSolutionsTags = solutionsContent !== '' ? formattedTags(solutionsContent) : [];
+  const allTopicsTags = topicsContent !== '' ? formattedTags(topicsContent) : [];
+  const supportedProducts = [];
+  if (allSolutionsTags.length) {
+    const { query: additionalQuery, products } = getParsedSolutionsQuery(allSolutionsTags);
+    products.forEach((p) => supportedProducts.push(p));
+    window.headlessBaseSolutionQuery = `(${window.headlessBaseSolutionQuery} AND ${additionalQuery})`;
+  }
+
   const div = document.createElement('div');
   div.classList.add('browse-topics');
 
   const headerDiv = htmlToElement(`
     <div class="browse-topics-block-header">
       <div class="browse-topics-block-title">
-          <h2>${headingElement?.textContent.trim()}</h2>
+          <h2>${headingContent}</h2>
       </div>
     </div>
   `);
@@ -763,13 +868,14 @@ function decorateBrowseTopics(block) {
   contentDiv.classList.add('browse-topics-block-content');
   const browseFiltersSection = document.querySelector('.browse-filters-form');
 
-  if (allTopicsTags.length > 0) {
+  if (allTopicsTags.length > 0 && lang === 'en') {
     allTopicsTags
       .filter((value) => value !== undefined)
       .forEach((topicsButtonTitle) => {
-        const topicName = atob(topicsButtonTitle);
+        const parts = topicsButtonTitle.split('/');
+        const topicName = parts[parts.length - 1];
         const topicsButtonDiv = createTag('button', { class: 'browse-topics browse-topics-item' });
-        topicsButtonDiv.dataset.topicname = topicName;
+        topicsButtonDiv.dataset.topicname = topicsButtonTitle;
         topicsButtonDiv.innerHTML = topicName;
         contentDiv.appendChild(topicsButtonDiv);
       });
@@ -781,43 +887,38 @@ function decorateBrowseTopics(block) {
         } else {
           e.target.classList.add('browse-topics-item-active');
         }
-        updateClearFilterStatus(browseFiltersSection);
         handleTopicSelection(contentDiv);
+        updateClearFilterStatus(browseFiltersSection);
       }
     });
     const decodedHash = decodeURIComponent(window.location.hash);
     const filtersInfo = decodedHash.split('&').find((s) => s.includes('@el_features'));
+
     if (filtersInfo) {
-      let selectedTopics;
-      const [, multipleFeaturesCheck] = filtersInfo.match(/@el_features==\(([^)]+)/) || [];
-      let topicsString = multipleFeaturesCheck;
-      if (!topicsString) {
-        const [, singleFeatureCheck] = filtersInfo.match(/@el_features=("[^"]*")/) || [];
-        topicsString = singleFeatureCheck;
-      }
-      if (topicsString) {
-        selectedTopics = topicsString.split(',').map((s) => s.trim().replace(/"/g, ''));
-      }
+      const selectedTopics = getSelectedTopics(filtersInfo);
       if (selectedTopics && selectedTopics.length > 0) {
         selectedTopics.forEach((topic) => {
-          const element = contentDiv.querySelector(`.browse-topics-item[data-topicname="${topic}"]`);
-          element.classList.add('browse-topics-item-active');
+          const element = contentDiv.querySelector(`.browse-topics-item[data-topicname*="${topic}"]`);
+          if (element) {
+            element.classList.add('browse-topics-item-active');
+          }
         });
         handleTopicSelection(contentDiv);
       }
     }
-
-    firstChild.parentNode.replaceChild(headerDiv, firstChild);
-    secondChild.parentNode.replaceChild(contentDiv, secondChild);
     div.append(headerDiv);
     div.append(contentDiv);
     /* Append browse topics right above the filters section */
     const filtersFormEl = document.querySelector('.browse-filters-form');
     filtersFormEl.insertBefore(div, filtersFormEl.children[4]);
   }
+  (solutionsElement.parentNode || solutionsElement).remove();
+  (headingElement.parentNode || headingElement).remove();
+  (topicsElement.parentNode || topicsElement).remove();
 }
 
 export default async function decorate(block) {
+  window.headlessBaseSolutionQuery = BASE_COVEO_ADVANCED_QUERY;
   enableTagsAsProxy(block);
   appendFormEl(block);
   constructFilterInputContainer(block);

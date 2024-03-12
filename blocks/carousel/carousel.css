@@ -19,6 +19,7 @@
   margin: auto;
   align-items: stretch;
   -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .carousel.block > .panel-container::-webkit-scrollbar {
@@ -26,15 +27,20 @@
 }
 
 /* teaser inside carousel have same height and texts are centered */
+.carousel.block > .panel-container > .detailed-teaser.block,
 .carousel.block > .panel-container > .teaser.block {
   flex-shrink: 0;
   scroll-snap-align: start;
   height:auto;
 }
 
+.carousel.block > .panel-container > .detailed-teaser.block > .foreground,
 .carousel.block > .panel-container > .teaser.block > .foreground {
   height: 100%;
   display: flex;
+}
+
+.carousel.block > .panel-container > .teaser.block > .foreground {
   align-items: center;
 }
 
@@ -68,5 +74,12 @@
     /* stretches to window edge, cover section padding */
     margin-left: calc(-1 * var(--space-token-xl));
     margin-right: calc(-1 * var(--space-token-xl));
+  }
+}
+
+@media (min-width: 600px) {
+  .section.carousel-container {
+    padding-top: 0;
+    padding-bottom: 0;
   }
 }

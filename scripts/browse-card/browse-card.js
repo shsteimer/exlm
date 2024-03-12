@@ -1,16 +1,26 @@
-import { loadCSS, fetchPlaceholders } from '../lib-franklin.js';
-import { createTag, htmlToElement } from '../scripts.js';
+import { decorateIcons, loadCSS } from '../lib-franklin.js';
+import { createTag, htmlToElement, fetchLanguagePlaceholders, getPathDetails } from '../scripts.js';
 import { createTooltip } from './browse-card-tooltip.js';
 import { CONTENT_TYPES, RECOMMENDED_COURSES_CONSTANTS } from './browse-cards-constants.js';
 import loadJWT from '../auth/jwt.js';
-import { adobeIMS, profile } from '../data-service/profile-service.js';
+import { isSignedInUser, profile } from '../data-service/profile-service.js';
 import { tooltipTemplate } from '../toast/toast.js';
 import renderBookmark from '../bookmark/bookmark.js';
 import attachCopyLink from '../copy-link/copy-link.js';
 
+loadCSS(`${window.hlx.codeBasePath}/scripts/browse-card/browse-card.css`);
 loadCSS(`${window.hlx.codeBasePath}/scripts/toast/toast.css`);
 
-const isSignedIn = adobeIMS?.isSignedInUser();
+/* Fetch data from the Placeholder.json */
+let placeholders = {};
+try {
+  placeholders = await fetchLanguagePlaceholders();
+} catch (err) {
+  // eslint-disable-next-line no-console
+  console.error('Error fetching placeholders:', err);
+}
+
+const { lang } = getPathDetails();
 
 /* User Info for Community Section - Will accomodate once we have KHOROS integration */
 // const generateContributorsMarkup = (contributor) => {
@@ -84,7 +94,7 @@ const buildTagsContent = (cardMeta, tags = []) => {
   tags.forEach((tag) => {
     const { icon: iconName, text } = tag;
     if (text) {
-      const anchor = createTag('a', { class: 'browse-card-meta-anchor', title: 'user', href: '#' });
+      const anchor = createTag('div', { class: 'browse-card-meta-anchor' });
       const span = createTag('span', { class: `icon icon-${iconName}` });
       anchor.textContent = text;
       anchor.appendChild(span);
@@ -93,21 +103,19 @@ const buildTagsContent = (cardMeta, tags = []) => {
   });
 };
 
-let placeholders = {};
-try {
-  placeholders = await fetchPlaceholders();
-} catch (err) {
-  // eslint-disable-next-line no-console
-  console.error('Error fetching placeholders:', err);
-}
-
-// Default No Results Content from Placeholder
-export const buildNoResultsContent = (block) => {
-  loadCSS(`${window.hlx.codeBasePath}/scripts/browse-card/browse-card.css`); // load css dynamically
-  const noResultsInfo = htmlToElement(`
+/* Default No Results Content from Placeholder */
+export const buildNoResultsContent = (block, show) => {
+  if (show) {
+    const noResultsInfo = htmlToElement(`
     <div class="browse-card-no-results">${placeholders.noResultsText}</div>
   `);
-  block.appendChild(noResultsInfo);
+    block.appendChild(noResultsInfo);
+  } else {
+    const existingNoResultsInfo = block.querySelector('.browse-card-no-results');
+    if (existingNoResultsInfo) {
+      block.removeChild(existingNoResultsInfo);
+    }
+  }
 };
 
 const buildEventContent = ({ event, cardContent, card }) => {
@@ -142,43 +150,49 @@ const buildInProgressBarContent = ({ inProgressStatus, cardFigure, card }) => {
 
 const buildCourseDurationContent = ({ inProgressStatus, inProgressText, cardContent }) => {
   const titleElement = createTag('p', { class: 'course-duration' });
-  const remainingTime = calculateRemainingTime(inProgressText, inProgressStatus);
-  titleElement.textContent = `You have ${formatRemainingTime(remainingTime)} left in this course`;
+  if (lang === 'en') {
+    const remainingTime = calculateRemainingTime(inProgressText, inProgressStatus);
+    const timeleftLabel = placeholders?.recommendedCoursesTimeLeftLabel || 'You have $[TIME_LEFT] left in this course';
+    titleElement.textContent = timeleftLabel.replace('$[TIME_LEFT]', formatRemainingTime(remainingTime));
+  } else {
+    const totalDurationTime = placeholders?.recommendedCoursesTotalDurationLabel || 'Total Duration';
+    titleElement.textContent = `${totalDurationTime} ${inProgressText}`;
+  }
   cardContent.appendChild(titleElement);
 };
 
-const buildCardCtaContent = ({ cardFooter, contentType, viewLink, viewLinkText }) => {
-  let icon = null;
-  let isLeftPlacement = false;
-  if (contentType === 'tutorial') {
-    icon = 'play-outline';
-    isLeftPlacement = false;
-  } else if (
-    contentType === CONTENT_TYPES.LIVE_EVENTS.MAPPING_KEY ||
-    contentType === CONTENT_TYPES.EVENT.MAPPING_KEY ||
-    contentType === CONTENT_TYPES.INSTRUCTOR_LED_TRANING.MAPPING_KEY
-  ) {
-    icon = 'new-tab';
+const buildCardCtaContent = ({ cardFooter, contentType, viewLinkText }) => {
+  if (viewLinkText) {
+    let icon = null;
+    let isLeftPlacement = false;
+    if (contentType.toLowerCase() === CONTENT_TYPES.TUTORIAL.MAPPING_KEY) {
+      icon = 'play-outline';
+      isLeftPlacement = false;
+    } else if (
+      [CONTENT_TYPES.LIVE_EVENT.MAPPING_KEY, CONTENT_TYPES.INSTRUCTOR_LED.MAPPING_KEY].includes(
+        contentType.toLowerCase(),
+      )
+    ) {
+      icon = 'new-tab';
+    }
+    const iconMarkup = icon ? `<span class="icon icon-${icon}"></span>` : '';
+    const linkText = htmlToElement(`
+          <div class="browse-card-cta-element">
+              ${isLeftPlacement ? `${iconMarkup} ${viewLinkText}` : `${viewLinkText} ${iconMarkup}`}
+          </div>
+      `);
+    cardFooter.appendChild(linkText);
   }
-  const iconMarkup = icon ? `<span class="icon icon-${icon}"></span>` : '';
-  const ctaText = viewLinkText || '';
-  const anchorLink = htmlToElement(`
-        <a class="browse-card-cta-element" target="_blank" href="${viewLink}">
-            ${isLeftPlacement ? `${iconMarkup} ${ctaText}` : `${ctaText} ${iconMarkup}`}
-        </a>
-    `);
-  cardFooter.appendChild(anchorLink);
 };
 
 const stripScriptTags = (input) => input.replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
 
-const buildCardContent = (card, model) => {
+const buildCardContent = async (card, model) => {
   const {
     id,
     description,
     contentType: type,
     viewLinkText,
-    viewLink,
     copyLink,
     tags,
     event,
@@ -226,15 +240,15 @@ const buildCardContent = (card, model) => {
   //   cardContent.insertBefore(contributorInfo, cardMeta);
   // }
 
-  if (contentType === CONTENT_TYPES.LIVE_EVENTS.MAPPING_KEY) {
+  if (contentType === CONTENT_TYPES.LIVE_EVENT.MAPPING_KEY) {
     buildEventContent({ event, cardContent, card });
   }
   const cardOptions = document.createElement('div');
   cardOptions.classList.add('browse-card-options');
   if (
-    contentType !== CONTENT_TYPES.LIVE_EVENTS.MAPPING_KEY &&
+    contentType !== CONTENT_TYPES.LIVE_EVENT.MAPPING_KEY &&
     contentType !== CONTENT_TYPES.COMMUNITY.MAPPING_KEY &&
-    contentType !== CONTENT_TYPES.INSTRUCTOR_LED_TRANING.MAPPING_KEY
+    contentType !== CONTENT_TYPES.INSTRUCTOR_LED.MAPPING_KEY
   ) {
     const unAuthBookmark = document.createElement('div');
     unAuthBookmark.className = 'bookmark';
@@ -243,6 +257,7 @@ const buildCardContent = (card, model) => {
     const authBookmark = document.createElement('div');
     authBookmark.className = 'bookmark auth';
     authBookmark.innerHTML = tooltipTemplate('bookmark-icon', '', `${placeholders.bookmarkAuthLabelSet}`);
+    const isSignedIn = await isSignedInUser();
     if (isSignedIn) {
       cardOptions.appendChild(authBookmark);
       if (id) {
@@ -260,31 +275,32 @@ const buildCardContent = (card, model) => {
     copyLinkElem.innerHTML = tooltipTemplate('copy-icon', '', `${placeholders.toastTiptext}`);
     cardOptions.appendChild(copyLinkElem);
     copyLinkElem.setAttribute('data-link', copyLink);
-    if (isSignedIn && id) {
+    if (id) {
       copyLinkElem.setAttribute('data-id', id);
     }
   }
   cardFooter.appendChild(cardOptions);
-  buildCardCtaContent({ cardFooter, contentType, viewLink, viewLinkText });
+  buildCardCtaContent({ cardFooter, contentType, viewLinkText });
 };
 
 const setupBookmarkAction = (wrapper) => {
   loadJWT().then(async () => {
     profile().then(async (data) => {
-      const bookmarkAuthed = Array.from(
-        wrapper.querySelectorAll('.browse-card-footer .browse-card-options .bookmark.auth'),
-      );
+      const bookmarkAuthed = Array.from(wrapper.querySelectorAll('.browse-card-footer .browse-card-options .bookmark'));
       bookmarkAuthed.forEach((bookmark) => {
-        const bookmarkAuthedToolTipLabel = bookmark.querySelector('.exl-tooltip-label');
-        const bookmarkAuthedToolTipIcon = bookmark.querySelector('.bookmark-icon');
-        const bookmarkId = bookmark.getAttribute('data-id');
-        renderBookmark(bookmarkAuthedToolTipLabel, bookmarkAuthedToolTipIcon, bookmarkId);
-        if (data.bookmarks.includes(bookmarkId)) {
-          bookmarkAuthedToolTipIcon.classList.add('authed');
-          bookmarkAuthedToolTipLabel.innerHTML = `${placeholders.bookmarkAuthLabelRemove}`;
+        if (data?.bookmarks.includes(bookmark.getAttribute('data-id'))) {
+          bookmark.querySelector('.bookmark-icon').classList.add('authed');
+          bookmark.querySelector('.exl-tooltip-label').innerHTML = `${placeholders.bookmarkAuthLabelRemove}`;
         }
       });
     });
+  });
+
+  Array.from(wrapper.querySelectorAll('.browse-card-footer .browse-card-options .bookmark')).forEach((bookmark) => {
+    const bookmarkAuthedToolTipLabel = bookmark.querySelector('.exl-tooltip-label');
+    const bookmarkAuthedToolTipIcon = bookmark.querySelector('.bookmark-icon');
+    const bookmarkId = bookmark.getAttribute('data-id');
+    renderBookmark(bookmarkAuthedToolTipLabel, bookmarkAuthedToolTipIcon, bookmarkId);
   });
 };
 
@@ -298,7 +314,6 @@ const setupCopyAction = (wrapper) => {
 };
 
 export async function buildCard(container, element, model) {
-  loadCSS(`${window.hlx.codeBasePath}/scripts/browse-card/browse-card.css`); // load css dynamically
   const { thumbnail, product, title, contentType, badgeTitle, inProgressStatus } = model;
   let type = contentType?.toLowerCase();
   const courseMappingKey = CONTENT_TYPES.COURSE.MAPPING_KEY.toLowerCase();
@@ -335,8 +350,13 @@ export async function buildCard(container, element, model) {
     img.alt = title;
     img.width = 254;
     img.height = 153;
-    cardFigure.classList.add('img-custom-height');
     cardFigure.appendChild(img);
+    img.addEventListener('error', () => {
+      img.style.display = 'none';
+    });
+    img.addEventListener('load', () => {
+      cardFigure.classList.add('img-custom-height');
+    });
   }
 
   const bannerElement = createTag('h3', { class: 'browse-card-banner' });
@@ -360,7 +380,7 @@ export async function buildCard(container, element, model) {
       const tooltipConfig = {
         position: 'top',
         color: 'grey',
-        content: product.join(', ').replace(/\|/g, ' | '),
+        content: product.join(', '),
       };
       createTooltip(container, tooltipElem, tooltipConfig);
     } else {
@@ -374,8 +394,23 @@ export async function buildCard(container, element, model) {
     titleElement.textContent = title;
     cardContent.appendChild(titleElement);
   }
-  buildCardContent(card, model);
+  await buildCardContent(card, model);
   setupBookmarkAction(card);
   setupCopyAction(card);
-  element.appendChild(card);
+  if (model.viewLink) {
+    const cardContainer = document.createElement('a');
+    cardContainer.setAttribute('href', model.viewLink);
+    if (
+      [CONTENT_TYPES.LIVE_EVENT.MAPPING_KEY, CONTENT_TYPES.INSTRUCTOR_LED.MAPPING_KEY].includes(
+        contentType.toLowerCase(),
+      )
+    ) {
+      cardContainer.setAttribute('target', '_blank');
+    }
+    cardContainer.appendChild(card);
+    element.appendChild(cardContainer);
+  } else {
+    element.appendChild(card);
+  }
+  decorateIcons(element);
 }

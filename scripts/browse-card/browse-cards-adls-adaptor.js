@@ -1,7 +1,14 @@
-import { fetchPlaceholders } from '../lib-franklin.js';
 import browseCardDataModel from '../data-model/browse-cards-model.js';
 import { CONTENT_TYPES } from './browse-cards-constants.js';
-import { adlsRedirectUrl } from '../urls.js';
+import { adlsUrl } from '../urls.js';
+import { fetchLanguagePlaceholders } from '../scripts.js';
+
+/* Fetch the Domain Name and Protocol from ADLS End Point */
+const extractDomain = (url) => {
+  const urlObject = new URL(url);
+  const protocolAndDomain = urlObject.origin;
+  return protocolAndDomain;
+};
 
 /**
  * Module that provides functionality for adapting ADLS results to BrowseCards data model
@@ -15,19 +22,20 @@ const BrowseCardsADLSAdaptor = (() => {
    * @returns {Object} The BrowseCards data model.
    */
   const mapResultToCardsDataModel = (result) => {
-    const contentType = CONTENT_TYPES.INSTRUCTOR_LED_TRANING.MAPPING_KEY;
+    const contentType = CONTENT_TYPES.INSTRUCTOR_LED.MAPPING_KEY;
     const { solution, name, description, path } = result || {};
+    const adlsDomain = extractDomain(adlsUrl);
 
     return {
       ...browseCardDataModel,
       contentType,
-      badgeTitle: CONTENT_TYPES.INSTRUCTOR_LED_TRANING.LABEL,
+      badgeTitle: CONTENT_TYPES.INSTRUCTOR_LED.LABEL,
       product: solution && (Array.isArray(solution) ? solution : solution.split(/,\s*/)),
       title: name || '',
       description: description || '',
-      copyLink: adlsRedirectUrl + path || '',
-      viewLink: adlsRedirectUrl + path || '',
-      viewLinkText: placeholders.viewLinkCourse || 'View course',
+      copyLink: `${adlsDomain}${path}` || '',
+      viewLink: `${adlsDomain}${path}` || '',
+      viewLinkText: placeholders.instructorLedViewLabel || 'View course',
     };
   };
 
@@ -38,7 +46,7 @@ const BrowseCardsADLSAdaptor = (() => {
    */
   const mapResultsToCardsData = async (data) => {
     try {
-      placeholders = await fetchPlaceholders();
+      placeholders = await fetchLanguagePlaceholders();
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error('Error fetching placeholders:', err);

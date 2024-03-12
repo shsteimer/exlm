@@ -1,8 +1,12 @@
-import { decorateIcons, getMetadata, loadCSS, fetchPlaceholders } from '../lib-franklin.js';
-import { createTag, htmlToElement } from '../scripts.js'; // eslint-disable-line import/no-cycle
-import { QUALTRICS_LOADED_EVENT_NAME } from './qualtrics/constants.js';
-import { embedQualtricsSurveyIntercept } from './qualtrics/qualtrics-embed.js';
+import { decorateIcons, getMetadata, loadCSS } from '../lib-franklin.js';
+import { createTag, htmlToElement, getPathDetails } from '../scripts.js'; // eslint-disable-line import/no-cycle
+import { QUALTRICS_LOADED_EVENT_NAME } from '../qualtrics.js'; // eslint-disable-line import/no-cycle
 import { assetInteractionModel } from '../analytics/lib-analytics.js';
+
+const RETRY_LIMIT = 5;
+const RETRY_DELAY = 500;
+
+const FEEDBACK_CONTAINER_SELECTOR = '.feedback-ui';
 
 // fetch fragment html
 const fetchFragment = async (rePath, lang = 'en') => {
@@ -10,7 +14,8 @@ const fetchFragment = async (rePath, lang = 'en') => {
   return response.text();
 };
 
-const feedbackFragment = fetchFragment('feedback-bar/feedback-bar');
+const { lang } = getPathDetails();
+const feedbackFragment = await fetchFragment('feedback-bar/feedback-bar', lang);
 
 function decorateFirstQuestion(firstQuestion) {
   const newDiv = createTag('div', { class: 'like-btns' });
@@ -187,7 +192,7 @@ function decorateOpenedCtrl(openedControl) {
 }
 
 function hideFeedbackBar(state = true) {
-  document.querySelector('.feedback-ui').setAttribute('aria-hidden', state);
+  document.querySelector(FEEDBACK_CONTAINER_SELECTOR).setAttribute('aria-hidden', state);
 }
 
 function toggleFeedbackBar(el, show = false) {
@@ -228,7 +233,10 @@ function decorateFeedback(el) {
   decorateExpandedCtrl(expandedCtrlEl);
   const closeBtnEl = decorateCloseBtnEl();
 
-  closeBtnEl.addEventListener('click', () => hideFeedbackBar());
+  closeBtnEl.addEventListener('click', () => {
+    assetInteractionModel(null, 'Feedback Dismissed');
+    hideFeedbackBar();
+  });
 
   leftEl.append(qualtricsElContainer, firstEl, secondEl);
   rightEl.append(openedCtrlEl, headerTxtMobileEl, expandedCtrlEl);
@@ -245,8 +253,13 @@ function handleFeedbackToggle(el) {
     chevron.addEventListener('click', () => {
       const isExpanded = el.getAttribute('aria-expanded') === 'true';
 
-      if (isExpanded) toggleFeedbackBar(el, false);
-      else toggleFeedbackBar(el, true);
+      if (isExpanded) {
+        toggleFeedbackBar(el, false);
+        assetInteractionModel(null, 'Feedback Collapsed');
+      } else {
+        toggleFeedbackBar(el, true);
+        assetInteractionModel(null, 'Feedback Expanded');
+      }
     });
   });
 }
@@ -279,12 +292,18 @@ function handleGithubBtns(el) {
   const reportBtn = el.querySelector('.git-buttons > button:nth-child(1)');
   const suggestBtn = el.querySelector('.git-buttons > button:nth-child(2)');
 
-  suggestBtn.addEventListener('click', goToEditPage);
-  reportBtn.addEventListener('click', goToReportIssuePage);
+  suggestBtn.addEventListener('click', () => {
+    assetInteractionModel(null, 'Suggest Edit');
+    goToEditPage();
+  });
+  reportBtn.addEventListener('click', () => {
+    assetInteractionModel(null, 'File Bug');
+    goToReportIssuePage();
+  });
 }
 
 function handleIntersection(entries) {
-  const fb = document.querySelector('.feedback-ui');
+  const fb = document.querySelector(FEEDBACK_CONTAINER_SELECTOR);
 
   entries.forEach((entry) => {
     if (entry.isIntersecting) {
@@ -307,7 +326,10 @@ function handleFeedbackBarVisibilityOnScroll() {
 }
 
 function handleClosingFeedbackBar(el) {
-  el.querySelector('.cta .dismiss').addEventListener('click', () => hideFeedbackBar());
+  el.querySelector('.cta .dismiss').addEventListener('click', () => {
+    assetInteractionModel(null, 'Feedback Dismissed');
+    hideFeedbackBar();
+  });
 }
 
 function showFeedbackBar() {
@@ -355,7 +377,7 @@ function handleFeedbackIcons(el) {
         showQualtricsLoadingError(el);
         toggleFeedbackBar(el, false);
       }
-      assetInteractionModel(null, icon.ariaLabel[0].toUpperCase() + icon.ariaLabel.slice(1));
+      assetInteractionModel(null, `feedback ${icon.ariaLabel}`);
     });
   });
 }
@@ -371,6 +393,7 @@ function handleFeedbackSubmit(el) {
   });
 
   submitButton.addEventListener('click', () => {
+    assetInteractionModel(null, 'Finished');
     const qualtricsSubmitButton = el.querySelector('.QSI__EmbeddedFeedbackContainer_TextButton');
     const qualtricsTextArea = el.querySelector('.QSI__EmbeddedFeedbackContainer_OpenText');
 
@@ -398,9 +421,37 @@ function handleFeedbackSubmit(el) {
   });
 }
 
-export default async function loadFeedbackUi() {
-  const placeholders = await fetchPlaceholders();
+export function feedbackError() {
+  const fb = document.querySelector(FEEDBACK_CONTAINER_SELECTOR);
+  // eslint-disable-next-line no-console
+  console.error("Couldn't embed Qualtrics survey intercept.");
+  showQualtricsLoadingError(fb);
+  toggleFeedbackBar(fb, false);
+}
 
+let checkInterval;
+let retryCount = 0;
+
+function checkInterceptLoaded() {
+  const fb = document.querySelector(FEEDBACK_CONTAINER_SELECTOR);
+
+  if (fb.querySelector(' .QSI__EmbeddedFeedbackContainer_Thumbs')) {
+    clearInterval(checkInterval);
+    handleFeedbackIcons(fb);
+    handleFeedbackSubmit(fb);
+  } else if (retryCount < RETRY_LIMIT) {
+    retryCount += 1;
+
+    if (!checkInterval) {
+      checkInterval = setInterval(checkInterceptLoaded, RETRY_DELAY);
+    }
+  } else {
+    clearInterval(checkInterval);
+    feedbackError();
+  }
+}
+
+export default async function loadFeedbackUi() {
   if (!showFeedbackBar()) return;
 
   loadCSS(`${window.hlx.codeBasePath}/scripts/feedback/feedback.css`);
@@ -417,25 +468,7 @@ export default async function loadFeedbackUi() {
   handleGithubBtns(fb);
   handleFeedbackBarVisibilityOnScroll();
 
-  try {
-    embedQualtricsSurveyIntercept(placeholders.feedbackSurveyId);
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("Couldn't embed Qualtrics survey intercept.", err);
-    showQualtricsLoadingError(fb);
-    toggleFeedbackBar(fb, false);
-  }
-
-  function interceptLoaded() {
-    // wait for Qualtrics to load
-    // eslint-disable-next-line no-undef
-    if (QSI.API) {
-      handleFeedbackIcons(fb);
-      handleFeedbackSubmit(fb);
-    }
-  }
-
-  window.addEventListener(QUALTRICS_LOADED_EVENT_NAME, interceptLoaded, false);
+  window.addEventListener(QUALTRICS_LOADED_EVENT_NAME, checkInterceptLoaded, false);
 }
 
 loadFeedbackUi();

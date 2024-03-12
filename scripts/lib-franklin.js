@@ -371,7 +371,7 @@ export function readBlockConfig(block) {
  * @param {Element} main The container element
  */
 export function decorateSections(main) {
-  main.querySelectorAll(':scope > div').forEach((section) => {
+  main.querySelectorAll(':scope > div:not([data-section-status])').forEach((section) => {
     const wrappers = [];
     let defaultContent = false;
     [...section.children].forEach((e) => {
@@ -423,16 +423,7 @@ export function updateSectionsStatus(main) {
         break;
       } else {
         section.dataset.sectionStatus = 'loaded';
-        /**
-         * FIXME: All sections are loaded with first section
-         * to improve performance. Revisit this section and identify a proper
-         * fix.
-         * */
-        if (i === 0) {
-          sections.forEach((sec) => {
-            sec.style.display = null;
-          });
-        }
+        section.style.display = null;
       }
     }
   }
@@ -730,7 +721,12 @@ export function setup() {
   const scriptEl = document.querySelector('script[src$="/scripts/scripts.js"]');
   if (scriptEl) {
     try {
-      [window.hlx.codeBasePath] = new URL(scriptEl.src).pathname.split('/scripts/scripts.js');
+      const scriptURL = new URL(scriptEl.src, window.location);
+      if (scriptURL.host === window.location.host) {
+        [window.hlx.codeBasePath] = scriptURL.pathname.split('/scripts/scripts.js');
+      } else {
+        [window.hlx.codeBasePath] = scriptURL.href.split('/scripts/scripts.js');
+      }
     } catch (error) {
       // eslint-disable-next-line no-console
       console.log(error);

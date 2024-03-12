@@ -1,9 +1,116 @@
+import { isSignedInUser } from '../../scripts/data-service/profile-service.js';
 import { decorateIcons } from '../../scripts/lib-franklin.js';
-import { loadIms } from '../../scripts/scripts.js';
-import { signOut } from '../../scripts/auth/auth-operations.js';
-import Search from '../../scripts/search/search.js';
-import { registerResizeHandler } from './header-utils.js';
-import { fetchCommunityProfileData } from '../../scripts/data-service/khoros-data-service.js';
+import { htmlToElement, getPathDetails, fetchLanguagePlaceholders, decorateLinks } from '../../scripts/scripts.js';
+
+const languageModule = import('../../scripts/language.js');
+const authOperationsModule = import('../../scripts/auth/auth-operations.js');
+const searchModule = import('../../scripts/search/search.js');
+// Khoros Proxy URL (Determine the environment based on the host name)
+const environment = window.location.hostname === 'experienceleague.adobe.com' ? '' : '-dev';
+export const khorosProxyProfileAPI = `https://51837-exlmconverter${environment}.adobeioruntime.net/api/v1/web/main/khoros/plugins/custom/adobe/adobedx/profile-menu-list`;
+
+class Deferred {
+  constructor() {
+    this.promise = new Promise((resolve, reject) => {
+      this.reject = reject;
+      this.resolve = resolve;
+    });
+  }
+}
+
+/**
+ * debounce fn execution
+ * @param {number} ms
+ * @param {Function} fn
+ * @returns {Function} debounced function
+ */
+export const debounce = (ms, fn) => {
+  let timer;
+  // eslint-disable-next-line func-names
+  return function (...args) {
+    clearTimeout(timer);
+    args.unshift(this);
+    timer = setTimeout(fn(args), ms);
+  };
+};
+
+let placeholders = {};
+try {
+  placeholders = await fetchLanguagePlaceholders();
+} catch (err) {
+  // eslint-disable-next-line no-console
+  console.error('Error fetching placeholders:', err);
+}
+
+/**
+ * Register page resize handler
+ * @param {ResizeObserverCallback} handler
+ * @returns {void} nothing
+ */
+function registerHeaderResizeHandler(callback) {
+  window.customResizeHandlers = window.customResizeHandlers || [];
+  const header = document.querySelector('header');
+  // register resize observer only once.
+  if (!window.pageResizeObserver) {
+    const pageResizeObserver = new ResizeObserver(
+      debounce(100, () => {
+        window.customResizeHandlers.forEach((handler) => {
+          try {
+            handler();
+          } catch (e) {
+            // eslint-disable-next-line no-console
+            console.error(e);
+          }
+        });
+      }),
+    );
+    // observe immediately
+    pageResizeObserver.observe(header, {
+      box: 'border-box',
+    });
+    window.pageResizeObserver = pageResizeObserver;
+  }
+  // push handler
+  window.customResizeHandlers.push(callback);
+  // ensure handler runs at-least once
+  callback();
+}
+
+const communityLocalesMap = new Map([
+  ['de', 'de'],
+  ['en', 'en'],
+  ['ja', 'ja'],
+  ['fr', 'fr'],
+  ['es', 'es'],
+  ['pt-br', 'pt'],
+  ['ko', 'ko'],
+  ['sv', 'en'],
+  ['nl', 'en'],
+  ['it', 'en'],
+  ['zh-hans', 'en'],
+  ['zh-hant', 'en'],
+]);
+
+// eslint-disable-next-line
+async function fetchCommunityProfileData() {
+  const locale = communityLocalesMap.get(document.querySelector('html').lang) || communityLocalesMap.get('en');
+  try {
+    const response = await fetch(`${khorosProxyProfileAPI}?lang=${locale}`, {
+      method: 'GET',
+      headers: {
+        'x-ims-token': await window.adobeIMS?.getAccessToken().token,
+      },
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      return data;
+    }
+  } catch (err) {
+    // eslint-disable-next-line
+    console.log('Error fetching data!!', err);
+  }
+}
 
 /**
  * @param {HTMLElement} block
@@ -46,18 +153,6 @@ const randomId = (length = 6) =>
  */
 const getCell = (block, row, cell) => block.querySelector(`:scope > div:nth-child(${row}) > div:nth-child(${cell})`);
 
-/**
- * creates an element from html string
- * @param {string} html
- * @returns {HTMLElement}
- */
-function htmlToElement(html) {
-  const template = document.createElement('template');
-  // Never return a text node of whitespace as the result
-  const trimmedHtml = html.trim();
-  template.innerHTML = trimmedHtml;
-  return template.content.firstElementChild;
-}
 // fetch fragment html
 const fetchFragment = async (rePath, lang = 'en') => {
   const response = await fetch(`/fragments/${lang}/${rePath}.plain.html`);
@@ -66,9 +161,11 @@ const fetchFragment = async (rePath, lang = 'en') => {
 // Mobile Only (Until 1024px)
 const isMobile = () => window.matchMedia('(max-width: 1023px)').matches;
 
-const headerFragment = fetchFragment('header/header');
-const languageFragment = fetchFragment('languages/languages');
-const decoratorState = {};
+const { lang } = getPathDetails();
+const headerFragment = await fetchFragment('header/header', lang);
+const decoratorState = {
+  languages: new Deferred(),
+};
 
 /**
  * Decorates the brand block
@@ -81,23 +178,36 @@ const brandDecorator = (brandBlock) => {
   return brandBlock;
 };
 
-window.adobeIMS = window.adobeIMS || {
-  isSignedInUser: () => false,
-};
-try {
-  await loadIms();
-} catch {
-  // eslint-disable-next-line no-console
-  console.warn('Adobe IMS not available.');
+/**
+ * Function to toggle the navigation menu.
+ *
+ * @param {Element} button - The button element used to toggle the navigation menu
+ * @param {Element} navWrapper - The wrapper element for the navigation menu
+ * @param {Element} navOverlay - The overlay element for the navigation menu
+ */
+function toggleNav(button, navWrapper, navOverlay) {
+  const profileButton = document.querySelector('.profile-toggle');
+  if (profileButton && profileButton.getAttribute('aria-expanded') === 'true') {
+    profileButton.click();
+  }
+  const isExpanded = button.getAttribute('aria-expanded') === 'true';
+  button.setAttribute('aria-expanded', !isExpanded);
+  navWrapper.classList.toggle('nav-wrapper-expanded');
+  if (!isExpanded) {
+    navOverlay.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+  } else {
+    navOverlay.classList.add('hidden');
+    document.body.removeAttribute('style');
+  }
 }
-const isSignedIn = window.adobeIMS?.isSignedInUser();
 
 /**
  * adds hambuger button to nav wrapper
  * @param {HTMLElement} navWrapper
  * @returns {HTMLButtonElement}
  */
-const hamburgerButton = (navWrapper) => {
+const hamburgerButton = (navWrapper, navOverlay) => {
   const navWrapperId = 'nav-wrapper';
   const button = htmlToElement(`
     <button 
@@ -107,11 +217,17 @@ const hamburgerButton = (navWrapper) => {
       aria-haspopup="true"
       aria-controls="${navWrapperId}"></button>`);
   navWrapper.id = navWrapperId;
+
   button.addEventListener('click', () => {
-    const isExpanded = button.getAttribute('aria-expanded') === 'true';
-    button.setAttribute('aria-expanded', !isExpanded);
-    navWrapper.classList.toggle('nav-wrapper-expanded');
+    toggleNav(button, navWrapper, navOverlay);
   });
+
+  registerHeaderResizeHandler(() => {
+    if (!isMobile() && button.getAttribute('aria-expanded') === 'true') {
+      toggleNav(button, navWrapper, navOverlay);
+    }
+  });
+
   return button;
 };
 
@@ -119,23 +235,8 @@ const hamburgerButton = (navWrapper) => {
  * Builds nav items from the provided basic list
  * @param {HTMLUListElement} ul
  */
-const buildNavItems = (ul, level = 0) => {
-  if (level === 0) {
-    // add search link (visible on mobile only)
-    ul.appendChild(htmlToElement(`<li class="nav-item-mobile">${decoratorState.searchLinkHtml}</li>`));
-    // add language select (visible on mobile only)
-    ul.appendChild(
-      htmlToElement(
-        `<li class="nav-item-mobile">
-          <p>${decoratorState.languageTitle}</p>
-          <ul>
-            ${decoratorState.languages.map((l) => `<li><a href="${l.lang}">${l.title}</a></li>`).join('')}
-          </ul>
-        </li>`,
-      ),
-    );
-  }
-  [...ul.children].forEach((navItem) => {
+const buildNavItems = async (ul, level = 0) => {
+  const decorateNavItem = async (navItem) => {
     const navItemClasses = ['nav-item'];
     if (level === 0) navItemClasses.push('nav-item-root');
     navItem.classList.add(...navItemClasses);
@@ -212,7 +313,7 @@ const buildNavItems = (ul, level = 0) => {
         }
       };
       // listen for page resize, update events accordingly
-      registerResizeHandler(() => {
+      registerHeaderResizeHandler(() => {
         if (isMobile()) {
           // if mobile, add click event, remove mouseenter/mouseleave
           toggler.addEventListener('click', toggleExpandContent);
@@ -220,6 +321,7 @@ const buildNavItems = (ul, level = 0) => {
           toggler.parentElement.removeEventListener('mouseleave', toggleExpandContent);
         } else {
           // if desktop, add mouseenter/mouseleave, remove click event
+
           toggler.removeEventListener('click', toggleExpandContent);
           if (level === 0) {
             toggler.parentElement.addEventListener('mouseenter', toggleExpandContent);
@@ -245,36 +347,61 @@ const buildNavItems = (ul, level = 0) => {
         secondEl.remove();
       }
     }
-  });
+  };
+
+  if (level === 0) {
+    // add search link (visible on mobile only)
+    ul.appendChild(htmlToElement(`<li class="nav-item-mobile">${decoratorState.searchLinkHtml}</li>`));
+
+    const addMobileLangSelector = async () => {
+      const { getLanguagePath } = await languageModule;
+      const languages = await decoratorState.languages.promise;
+      // add language select (visible on mobile only)
+      const navItem = ul.appendChild(
+        htmlToElement(
+          `<li class="nav-item-mobile">
+            <p>${decoratorState.languageTitle}</p>
+            <ul>
+              ${languages.map((l) => `<li><a href="${getLanguagePath(l.lang)}">${l.title}</a></li>`).join('')}
+            </ul>
+          </li>`,
+        ),
+      );
+      decorateNavItem(navItem);
+    };
+    await addMobileLangSelector();
+  }
+
+  [...ul.children].forEach(decorateNavItem);
 };
 
 /**
  * Decorates the nav block
  * @param {HTMLElement} navBlock
  */
-const navDecorator = (navBlock) => {
+const navDecorator = async (navBlock) => {
   simplifySingleCellBlock(navBlock);
+
+  const navOverlay = document.querySelector('.nav-overlay');
+
   const navWrapper = htmlToElement('<div class="nav-wrapper"></div>');
-  const hamburger = hamburgerButton(navWrapper);
+  const hamburger = hamburgerButton(navWrapper, navOverlay);
+
   navWrapper.replaceChildren(hamburger, ...navBlock.children);
   navBlock.replaceChildren(navWrapper);
 
   // build navItems
   const ul = navWrapper.querySelector(':scope > ul');
-  buildNavItems(ul);
+  await buildNavItems(ul);
 
   navBlock.firstChild.id = hamburger.getAttribute('aria-controls');
   navBlock.prepend(hamburger);
-
-  if (isSignedIn) {
-    // New Link under Learn Menu - Authenticated
-    const recCourses = document.createElement('li');
-    recCourses.classList.add('nav-item', 'nav-item-leaf');
-    recCourses.innerHTML = `<a href="https://experienceleague.adobe.com/#dashboard/learning">Recommended courses<span class="nav-item-subtitle">Your expertly curated courses</span></a></li>`;
-    document.querySelectorAll('.nav-item-toggle').forEach((el) => {
-      const elContent = el.innerHTML.toLowerCase();
-      if (elContent === 'content types') {
-        el.nextSibling.querySelector('ul').prepend(recCourses);
+  const isSignedIn = await isSignedInUser();
+  if (!isSignedIn) {
+    // hide auth-only nav items - see decorateLinks method for details
+    [...navBlock.querySelectorAll('.nav-item')].forEach((navItemEl) => {
+      if (navItemEl.querySelector(':scope > a[auth-only]')) {
+        navItemEl.style.display = 'none';
       }
     });
   }
@@ -345,20 +472,17 @@ const searchDecorator = async (searchBlock) => {
   searchBlock.append(searchWrapper);
   await decorateIcons(searchBlock);
 
-  const searchItem = new Search({ searchBlock });
-  searchItem.configureAutoComplete({
-    searchOptions: options,
-  });
-  return searchBlock;
-};
+  const prepareSearch = async () => {
+    const Search = (await searchModule).default;
+    const searchItem = new Search({ searchBlock });
+    searchItem.configureAutoComplete({
+      searchOptions: options,
+      showSearchSuggestions: false,
+    });
+  };
+  prepareSearch();
 
-/**
- * Decorates the sign-up block
- * @param {HTMLElement} signUpBlock
- */
-const signUpDecorator = (signUpBlock) => {
-  simplifySingleCellBlock(signUpBlock);
-  return signUpBlock;
+  return searchBlock;
 };
 
 /**
@@ -368,28 +492,15 @@ const signUpDecorator = (signUpBlock) => {
 const languageDecorator = async (languageBlock) => {
   const title = getCell(languageBlock, 1, 1)?.firstChild.textContent;
   decoratorState.languageTitle = title;
+  decoratorState.languages = new Deferred();
 
-  const popoverId = 'language-picker-popover';
   const prependLanguagePopover = async (parent) => {
-    let languagesEl = htmlToElement(await languageFragment);
-    languagesEl = languagesEl.querySelector('ul');
-
-    const languageOptions = languagesEl?.children || [];
-    const languages = [...languageOptions].map((option) => ({
-      title: option.textContent,
-      lang: option?.firstElementChild?.href,
-    }));
-
-    decoratorState.languages = languages;
-
-    const options = languages
-      .map((option) => `<span class="language-selector-label" data-value="${option.lang}">${option.title}</span>`)
-      .join('');
-    const popover = htmlToElement(`
-      <div class="language-selector-popover" id="${popoverId}">
-        ${options}
-      </div>`);
-    parent.append(popover);
+    await languageModule.then(({ buildLanguagePopover }) => {
+      buildLanguagePopover().then(({ popover, languages }) => {
+        decoratorState.languages.resolve(languages);
+        parent.append(popover);
+      });
+    });
   };
 
   const languageHtml = `
@@ -399,7 +510,7 @@ const languageDecorator = async (languageBlock) => {
     `;
   languageBlock.innerHTML = languageHtml;
   decorateIcons(languageBlock);
-  await prependLanguagePopover(languageBlock);
+  prependLanguagePopover(languageBlock);
   return languageBlock;
 };
 
@@ -410,6 +521,7 @@ const languageDecorator = async (languageBlock) => {
 
 const signInDecorator = async (signInBlock) => {
   simplifySingleCellBlock(signInBlock);
+  const isSignedIn = await isSignedInUser();
   if (isSignedIn) {
     signInBlock.classList.add('signed-in');
     signInBlock.replaceChildren(
@@ -423,7 +535,29 @@ const signInDecorator = async (signInBlock) => {
         </div>`,
       ),
     );
+
     const toggler = signInBlock.querySelector('.profile-toggle');
+    const navOverlay = document.querySelector('.nav-overlay');
+    const toggleExpandContentMobile = () => {
+      const navButton = document.querySelector('.nav-hamburger');
+      if (navButton.getAttribute('aria-expanded') === 'true') {
+        navButton.click();
+      }
+      const isExpanded = toggler.getAttribute('aria-expanded') === 'true';
+      toggler.setAttribute('aria-expanded', !isExpanded);
+      const profileMenu = toggler.nextElementSibling;
+      const expandedClass = 'profile-menu-expanded';
+      if (!isExpanded) {
+        profileMenu.classList.add(expandedClass);
+        navOverlay.classList.remove('hidden');
+        document.body.style.overflow = 'hidden';
+      } else {
+        profileMenu.classList.remove(expandedClass);
+        navOverlay.classList.add('hidden');
+        document.body.removeAttribute('style');
+      }
+    };
+
     const toggleExpandContent = () => {
       const isExpanded = toggler.getAttribute('aria-expanded') === 'true';
       toggler.setAttribute('aria-expanded', !isExpanded);
@@ -435,22 +569,22 @@ const signInDecorator = async (signInBlock) => {
         profileMenu.classList.remove(expandedClass);
       }
     };
-    registerResizeHandler(() => {
+
+    registerHeaderResizeHandler(() => {
       if (isMobile()) {
         // if mobile, add click event, remove mouseenter/mouseleave
-        toggler.addEventListener('click', toggleExpandContent);
+        toggler.addEventListener('click', toggleExpandContentMobile);
         toggler.parentElement.removeEventListener('mouseenter', toggleExpandContent);
         toggler.parentElement.removeEventListener('mouseleave', toggleExpandContent);
       } else {
+        navOverlay.classList.add('hidden');
+        document.body.removeAttribute('style');
         // if desktop, add mouseenter/mouseleave, remove click event
-        toggler.removeEventListener('click', toggleExpandContent);
+        toggler.removeEventListener('click', toggleExpandContentMobile);
         toggler.parentElement.addEventListener('mouseenter', toggleExpandContent);
         toggler.parentElement.addEventListener('mouseleave', toggleExpandContent);
       }
     });
-
-    // Hide Signup - Authenticated
-    document.querySelector('.sign-up').style.display = 'none';
   } else {
     signInBlock.classList.remove('signed-in');
     signInBlock.firstChild.addEventListener('click', async () => {
@@ -467,18 +601,16 @@ const signInDecorator = async (signInBlock) => {
 
 const productGridDecorator = async (productGridBlock) => {
   simplifySingleCellBlock(productGridBlock);
+  const isSignedIn = await isSignedInUser();
   if (isSignedIn) {
     productGridBlock.classList.add('signed-in');
     const productDropdown = document.createElement('div');
     productDropdown.classList.add('product-dropdown');
-    const pTags = productGridBlock.querySelectorAll('p');
-    if (pTags.length > 0) {
-      pTags.forEach((p) => {
-        const anchor = p.querySelector('a');
-        anchor.setAttribute('target', '_blank');
-        const href = anchor.getAttribute('href').split('#');
-        anchor.setAttribute('href', href[0]);
-        productDropdown.innerHTML += p.innerHTML;
+    const aTags = productGridBlock.querySelectorAll('a');
+    if (aTags.length > 0) {
+      aTags.forEach((a) => {
+        a.setAttribute('target', '_blank');
+        productDropdown.append(a);
       });
     }
     const productToggle = document.createElement('button');
@@ -499,11 +631,8 @@ const productGridDecorator = async (productGridBlock) => {
       }
     };
 
-    registerResizeHandler(() => {
-      if (isMobile()) {
-        // if mobile, hide product grid block
-        gridToggler.style.display = 'none';
-      } else {
+    registerHeaderResizeHandler(() => {
+      if (!isMobile()) {
         // if desktop, add mouseenter/mouseleave, remove click event
         gridToggler.parentElement.addEventListener('mouseenter', toggleExpandGridContent);
         gridToggler.parentElement.addEventListener('mouseleave', toggleExpandGridContent);
@@ -518,22 +647,13 @@ const productGridDecorator = async (productGridBlock) => {
   return productGridBlock;
 };
 
-const getCommunityProfile = () =>
-  new Promise((resolve, reject) => {
-    const data = fetchCommunityProfileData();
-    if (data) {
-      resolve(data);
-    } else {
-      reject(new Error('Error fetching data!!'));
-    }
-  });
-
 /**
  * Decorates the profile-menu block
  * @param {HTMLElement} profileMenu
  */
 
 const profileMenuDecorator = async (profileMenuBlock) => {
+  const isSignedIn = await isSignedInUser();
   if (isSignedIn) {
     simplifySingleCellBlock(profileMenuBlock);
     profileMenuBlock.querySelectorAll('p').forEach((ptag) => {
@@ -543,13 +663,15 @@ const profileMenuDecorator = async (profileMenuBlock) => {
     });
     const profileMenuWrapper = document.querySelector('.profile-menu');
     const communityHeading = document.createElement('h2');
-    communityHeading.textContent = 'Community';
+    communityHeading.textContent = placeholders?.headerCommunityLabel || 'Community';
     if (profileMenuWrapper) {
-      profileMenuWrapper.innerHTML = `<h2>Learning</h2>${profileMenuBlock.innerHTML}`;
+      profileMenuWrapper.innerHTML = `<h2>${placeholders?.headerLearningLabel || 'Learning'}</h2>${
+        profileMenuBlock.innerHTML
+      }`;
       profileMenuWrapper.lastElementChild.setAttribute('data-id', 'sign-out');
       profileMenuWrapper.insertBefore(communityHeading, profileMenuWrapper.lastElementChild);
     }
-    getCommunityProfile()
+    fetchCommunityProfileData()
       .then((res) => {
         if (res) {
           res.data.menu.forEach((item) => {
@@ -569,6 +691,7 @@ const profileMenuDecorator = async (profileMenuBlock) => {
 
     if (profileMenuWrapper.querySelector('[data-id="sign-out"]')) {
       profileMenuWrapper.querySelector('[data-id="sign-out"]').addEventListener('click', async () => {
+        const { signOut } = await authOperationsModule;
         signOut();
       });
     }
@@ -601,24 +724,6 @@ const decorateNewTabLinks = (block) => {
   });
 };
 
-/** @param {HTMLElement} block  */
-const decorateLinks = (block) => {
-  const links = block.querySelectorAll('a');
-  links.forEach((link) => {
-    const decodedHref = decodeURIComponent(link.getAttribute('href'));
-    const firstCurlyIndex = decodedHref.indexOf('{');
-    const lastCurlyIndex = decodedHref.lastIndexOf('}');
-    if (firstCurlyIndex > -1 && lastCurlyIndex > -1) {
-      // get string between curly braces including curly braces
-      const options = decodedHref.substring(firstCurlyIndex, lastCurlyIndex + 1);
-      Object.entries(JSON.parse(options)).forEach(([key, value]) => {
-        link.setAttribute(key.trim(), value);
-      });
-      const endIndex = decodedHref.charAt(firstCurlyIndex - 1) === '#' ? firstCurlyIndex - 1 : firstCurlyIndex;
-      link.href = decodedHref.substring(0, endIndex);
-    }
-  });
-};
 /**
  * Main header decorator, calls all the other decorators
  * @param {HTMLElement} headerBlock
@@ -634,32 +739,27 @@ export default async function decorate(headerBlock) {
   nav.role = 'navigation';
   nav.ariaLabel = 'Main navigation';
 
-  // order matters.
-  const decorators = [
-    { className: 'brand', decorator: brandDecorator },
-    { className: 'search', decorator: searchDecorator },
-    { className: 'sign-up', decorator: signUpDecorator },
-    { className: 'language-selector', decorator: languageDecorator },
-    { className: 'product-grid', decorator: productGridDecorator },
-    { className: 'sign-in', decorator: signInDecorator },
-    { className: 'profile-menu', decorator: profileMenuDecorator },
-    { className: 'adobe-logo', decorator: adobeLogoDecorator },
-    { className: 'nav', decorator: navDecorator },
-  ];
+  const navOverlay = document.createElement('div');
+  navOverlay.classList.add('nav-overlay', 'hidden');
+  document.body.appendChild(navOverlay);
 
-  for (let i = 0; i < decorators.length; i += 1) {
-    const { className, decorator } = decorators[i];
+  const decorateHeaderBlock = async (className, decorator) => {
     const block = nav.querySelector(`:scope > .${className}`);
-    if (block) {
-      // eslint-disable-next-line no-await-in-loop
-      await decorator(block);
-    } else {
-      // eslint-disable-next-line no-console
-      console.warn(`No header block found for class: ${className}`);
-    }
-  }
+    await decorator(block);
+  };
 
+  // Do this first to ensure all links are decorated correctly before they are used.
   decorateLinks(headerBlock);
+
+  decorateHeaderBlock('brand', brandDecorator);
+  decorateHeaderBlock('search', searchDecorator);
+  decorateHeaderBlock('language-selector', languageDecorator);
+  decorateHeaderBlock('product-grid', productGridDecorator);
+  decorateHeaderBlock('sign-in', signInDecorator);
+  decorateHeaderBlock('profile-menu', profileMenuDecorator);
+  decorateHeaderBlock('adobe-logo', adobeLogoDecorator);
+  await decorateHeaderBlock('nav', navDecorator);
+
   decorateNewTabLinks(headerBlock);
 
   // do this at the end, always.

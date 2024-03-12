@@ -1,7 +1,7 @@
 // Importing constants and modules
 import { RECOMMENDED_COURSES_CONSTANTS } from '../../scripts/browse-card/browse-cards-constants.js';
 import BrowseCardsDelegate from '../../scripts/browse-card/browse-cards-delegate.js';
-import { adobeIMS, profile } from '../../scripts/data-service/profile-service.js';
+import { isSignedInUser, profile } from '../../scripts/data-service/profile-service.js';
 import { htmlToElement } from '../../scripts/scripts.js';
 import BrowseCardsPathsAdaptor from '../../scripts/browse-card/browse-cards-paths-adaptor.js';
 import { buildCard, buildNoResultsContent } from '../../scripts/browse-card/browse-card.js';
@@ -9,16 +9,13 @@ import { decorateIcons } from '../../scripts/lib-franklin.js';
 import BuildPlaceholder from '../../scripts/browse-card/browse-card-placeholder.js';
 import { createTooltip, hideTooltipOnScroll } from '../../scripts/browse-card/browse-card-tooltip.js';
 
-// Checking if the user is signed in
-const isSignedIn = adobeIMS?.isSignedInUser();
-
 /**
  * Decorate function to process and log the mapped data.
  * @param {HTMLElement} block - The block of data to process.
  */
 export default async function decorate(block) {
   // Extracting elements from the block
-  const [headingElement, toolTipElement, linkTextElement] = [...block.children].map((row) => row.firstElementChild);
+  const [headingElement, toolTipElement, linkElement] = [...block.children].map((row) => row.firstElementChild);
   const contentType = RECOMMENDED_COURSES_CONSTANTS.PATHS.MAPPING_KEY;
   let buildCardsShimmer = '';
   const noOfResults = 4;
@@ -150,49 +147,48 @@ export default async function decorate(block) {
    * @param {HTMLElement} contentDiv - The content div to display cards.
    * @param {Array} cardData - The array of card data to display.
    */
-  const displayCards = (contentDiv, cardData, noOfResult, buildCardShimmer) => {
-    if (cardData && cardData.length > 0) {
-      for (let i = 0; i < Math.min(noOfResult, cardData.length); i += 1) {
-        const cardsData = cardData[i];
-        const cardsDiv = document.createElement('div');
-        buildCard(contentDiv, cardsDiv, cardsData);
-        contentDiv.appendChild(cardsDiv);
-      }
-    } else {
-      buildCardShimmer.remove();
-      buildNoResultsContent(block);
+  const displayCards = (contentDiv, cardData, noOfResult) => {
+    for (let i = 0; i < Math.min(noOfResult, cardData.length); i += 1) {
+      const cardsData = cardData[i];
+      const cardsDiv = document.createElement('div');
+      buildCard(contentDiv, cardsDiv, cardsData);
+      contentDiv.appendChild(cardsDiv);
     }
   };
 
   // Parameters for fetching card data
   const parameters = { contentType };
 
-  // Checking if the user is signed in before proceeding
-  if (isSignedIn) {
-    if (headingElement.firstElementChild) {
-      if (toolTipElement?.textContent?.trim()) {
-        headingElement.firstElementChild.insertAdjacentHTML('beforeend', '<div class="tooltip-placeholder"></div>');
-        const tooltipElem = headingElement.querySelector('.tooltip-placeholder');
-        const tooltipConfig = {
-          content: toolTipElement.textContent.trim(),
-        };
-        createTooltip(block, tooltipElem, tooltipConfig);
-      }
-      headingElement.firstElementChild.classList.add('h2');
-    }
-    const headerDiv = htmlToElement(`
+  headingElement.firstElementChild.classList.add('h2');
+
+  const headerDiv = htmlToElement(`
     <div class="browse-cards-block-header">
-    ${
-      headingElement.textContent.trim() ? `<div class="browse-cards-block-title">${headingElement.innerHTML}</div>` : ''
-    }
-      <div class="browse-cards-block-view">${linkTextElement.innerHTML}</div>
+      <div class="browse-cards-block-title">
+        ${headingElement.innerHTML}
+      </div>
+      <div class="browse-cards-block-view">${linkElement.innerHTML}</div>
     </div>
-  `);
-    // Appending header div to the block
-    block.appendChild(headerDiv);
+    `);
 
-    await decorateIcons(headerDiv);
+  if (toolTipElement?.textContent?.trim()) {
+    headerDiv
+      .querySelector('h1,h2,h3,h4,h5,h6')
+      ?.insertAdjacentHTML('afterend', '<div class="tooltip-placeholder"></div>');
+    const tooltipElem = headerDiv.querySelector('.tooltip-placeholder');
+    const tooltipConfig = {
+      content: toolTipElement.textContent.trim(),
+    };
+    createTooltip(block, tooltipElem, tooltipConfig);
+  }
 
+  // Appending header div to the block
+  block.appendChild(headerDiv);
+
+  await decorateIcons(headerDiv);
+
+  // Checking if the user is signed in before proceeding
+  const isSignedIn = await isSignedInUser();
+  if (isSignedIn) {
     // Creating content div for card display
     const contentDiv = document.createElement('div');
     contentDiv.classList.add('browse-cards-block-content');
@@ -227,20 +223,30 @@ export default async function decorate(block) {
         cardModifiedData
           .then((cardData) => {
             buildCardsShimmer.remove();
-            displayCards(contentDiv, cardData, noOfResults, buildCardsShimmer);
-            block.appendChild(contentDiv);
-            /* Hide Tooltip while scrolling the cards layout */
+            if (cardData && cardData.length > 0) {
+              displayCards(contentDiv, cardData, noOfResults);
+              block.appendChild(contentDiv);
+            } else {
+              buildNoResultsContent(block, true);
+            }
+            /* Hide Tooltip while scrolling the cards  layout */
             hideTooltipOnScroll(contentDiv);
-            decorateIcons(block);
           })
           .catch((err) => {
             // Hide shimmer placeholders on error
             buildCardsShimmer.remove();
-            buildNoResultsContent(block);
+            buildNoResultsContent(block, true);
             // eslint-disable-next-line no-console
             console.error('Recommended Cards:', err);
           });
       });
     });
+  } else if (
+    document.documentElement.classList.contains('adobe-ue-edit') ||
+    document.documentElement.classList.contains('adobe-ue-preview')
+  ) {
+    buildNoResultsContent(block, true);
+  } else {
+    block.style.display = 'None';
   }
 }

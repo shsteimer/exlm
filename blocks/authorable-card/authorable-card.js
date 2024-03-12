@@ -1,10 +1,95 @@
-import { decorateIcons, fetchPlaceholders } from '../../scripts/lib-franklin.js';
-import { htmlToElement } from '../../scripts/scripts.js';
+import { decorateIcons } from '../../scripts/lib-franklin.js';
+import { htmlToElement, fetchLanguagePlaceholders } from '../../scripts/scripts.js';
 import { buildCard } from '../../scripts/browse-card/browse-card.js';
 import { createTooltip, hideTooltipOnScroll } from '../../scripts/browse-card/browse-card-tooltip.js';
-import ArticleDataService from '../../scripts/data-service/article-data-service.js';
-import mapResultToCardsData from './article-data-adapter.js';
 import BuildPlaceholder from '../../scripts/browse-card/browse-card-placeholder.js';
+
+export const exlmCDNUrl = 'https://cdn.experienceleague.adobe.com';
+
+/**
+ * Retrieves the content of metadata tags.
+ * @param {string} name The metadata name (or property)
+ * @returns {string} The metadata value(s)
+ */
+export function getMetadata(name, doc = document) {
+  const attr = name && name.includes(':') ? 'property' : 'name';
+  const meta = [...doc.head.querySelectorAll(`meta[${attr}="${name}"]`)].map((m) => m.content).join(', ');
+  return meta || '';
+}
+
+function createThumbnailURL(doc, contentType) {
+  if (contentType === 'Course') {
+    const courseThumbnail = getMetadata('course-thumbnail', doc);
+    return courseThumbnail ? `${exlmCDNUrl}/thumb/${courseThumbnail.split('thumb/')[1]}` : '';
+  }
+
+  if (contentType === 'Tutorial') {
+    let urlString = doc?.querySelector('iframe')?.getAttribute('src');
+    if (!urlString) {
+      urlString = doc.querySelector('[href*="tv.adobe.com"]')?.getAttribute('href');
+    }
+    const videoUrl = urlString ? new URL(urlString) : null;
+    const videoId = videoUrl?.pathname?.split('/v/')[1]?.split('/')[0];
+    return videoId ? `https://video.tv.adobe.com/v/${videoId}?format=jpeg` : '';
+  }
+  return '';
+}
+
+/**
+ * Converts a string to title case.
+ * @param {string} str - The input string.
+ * @returns {string} The string in title case.
+ */
+const convertToTitleCase = (str) => (str ? str.replace(/\b\w/g, (match) => match.toUpperCase()) : '');
+
+const domParser = new DOMParser();
+
+/**
+ * Create article card data for the given article path.
+ * @param {string} articlePath
+ * @param {Object} placeholders
+ * @returns
+ */
+const getCardData = async (articlePath, placeholders) => {
+  let response = '';
+  try {
+    response = await fetch(articlePath.toString());
+    if (!response.ok) {
+      return undefined;
+    }
+  } catch (err) {
+    return undefined;
+  }
+  const html = await response.text();
+  const doc = domParser.parseFromString(html, 'text/html');
+  const fullURL = new URL(articlePath, window.location.origin).href;
+
+  let type = getMetadata('coveo-content-type', doc);
+  if (!type) {
+    type = getMetadata('type', doc);
+  }
+
+  const solutions = getMetadata('solutions', doc)
+    .split(',')
+    .map((s) => s.trim());
+  return {
+    id: getMetadata('id', doc),
+    title: doc.querySelector('title').textContent.split('|')[0].trim(),
+    description: getMetadata('description', doc),
+    type,
+    contentType: type,
+    badgeTitle: type,
+    thumbnail: createThumbnailURL(doc, type) || '',
+    product: solutions,
+    tags: [],
+    copyLink: fullURL,
+    bookmarkLink: '',
+    viewLink: fullURL,
+    viewLinkText: placeholders[`browseCard${convertToTitleCase(type)}ViewLabel`]
+      ? placeholders[`browseCard${convertToTitleCase(type)}ViewLabel`]
+      : `View ${type}`,
+  };
+};
 
 /**
  * Decorate function to process and log the mapped data.
@@ -31,7 +116,7 @@ export default async function decorate(block) {
   if (toolTipElement?.textContent?.trim()) {
     headerDiv
       .querySelector('h1,h2,h3,h4,h5,h6')
-      ?.insertAdjacentHTML('beforeend', '<div class="tooltip-placeholder"></div>');
+      ?.insertAdjacentHTML('afterend', '<div class="tooltip-placeholder"></div>');
     const tooltipElem = headerDiv.querySelector('.tooltip-placeholder');
     const tooltipConfig = {
       content: toolTipElement.textContent.trim(),
@@ -41,7 +126,6 @@ export default async function decorate(block) {
 
   block.replaceChildren(headerDiv);
 
-  const articleDataService = new ArticleDataService();
   const buildCardsShimmer = new BuildPlaceholder();
   buildCardsShimmer.add(block);
   const contentDiv = document.createElement('div');
@@ -49,7 +133,7 @@ export default async function decorate(block) {
 
   let placeholders = {};
   try {
-    placeholders = await fetchPlaceholders();
+    placeholders = await fetchLanguagePlaceholders();
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error('Error fetching placeholders:', err);
@@ -57,15 +141,15 @@ export default async function decorate(block) {
 
   const cardLoading$ = Promise.all(
     linksContainer.map(async (linkContainer) => {
-      const link = linkContainer.textContent.trim();
+      let link = linkContainer.textContent?.trim();
+      link = link.startsWith('/') ? `${window.hlx.codeBasePath}${link}` : link;
       // use the link containers parent as container for the card as it is instruented for authoring
       // eslint-disable-next-line no-param-reassign
       linkContainer = linkContainer.parentElement;
       linkContainer.innerHTML = '';
       if (link) {
         try {
-          const data = await articleDataService.handleArticleDataService(link);
-          const cardData = await mapResultToCardsData(data, placeholders);
+          const cardData = await getCardData(link, placeholders);
           await buildCard(contentDiv, linkContainer, cardData);
         } catch (err) {
           // eslint-disable-next-line no-console
@@ -80,7 +164,6 @@ export default async function decorate(block) {
     buildCardsShimmer.remove();
     contentDiv.append(...cards);
     block.appendChild(contentDiv);
-    decorateIcons(contentDiv);
   });
 
   /* Hide Tooltip while scrolling the cards layout */

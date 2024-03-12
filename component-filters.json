@@ -24,6 +24,7 @@
       "icon-block",
       "curated-cards",
       "teaser",
+      "detailed-teaser",
       "marquee",
       "carousel",
       "sign-up",
@@ -42,6 +43,20 @@
     ]
   },
   {
+    "id": "text",
+    "rte": {
+      "format": ["bold", "italic"],
+      "alignment": [],
+      "indentation": [],
+      "sr_script": ["superscript", "subscript"],
+      "list": ["bullist", "numlist"],
+      "insert": ["link"],
+      "advanced": [],
+      "extensions": [],
+      "editor": ["removeformat"]
+    }
+  },
+  {
     "id": "cards",
     "components": ["card"]
   },
@@ -51,7 +66,7 @@
   },
   {
     "id": "teaser",
-    "components": ["teaser"]
+    "components": ["teaser", "detailed-teaser"]
   },
   {
     "id": "accordion",

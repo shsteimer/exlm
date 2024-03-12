@@ -1,6 +1,6 @@
 import { decorateIcons } from '../../scripts/lib-franklin.js';
 import BrowseCardsDelegate from '../../scripts/browse-card/browse-cards-delegate.js';
-import { htmlToElement, loadIms } from '../../scripts/scripts.js';
+import { htmlToElement } from '../../scripts/scripts.js';
 import { buildCard } from '../../scripts/browse-card/browse-card.js';
 import { createTooltip, hideTooltipOnScroll } from '../../scripts/browse-card/browse-card-tooltip.js';
 import BuildPlaceholder from '../../scripts/browse-card/browse-card-placeholder.js';
@@ -15,31 +15,14 @@ export default async function decorate(block) {
     (row) => row.firstElementChild,
   );
   const [contentType, capabilities, role, level, sortBy] = configs.map((cell) => cell.textContent.trim());
-
   const sortCriteria = COVEO_SORT_OPTIONS[sortBy.toUpperCase()];
   const noOfResults = 4;
   const productKey = 'exl:solution';
   const featureKey = 'exl:feature';
-  const product = [];
-  const version = [];
-  const feature = [];
+  const products = [];
+  const versions = [];
+  const features = [];
   headingElement.firstElementChild?.classList.add('h2');
-
-  const extractCapability = () => {
-    const items = capabilities.split(',');
-
-    items.forEach((item) => {
-      const [type, productBase64, versionBase64] = item.split('/');
-      if (type === productKey) {
-        if (productBase64) product.push(atob(productBase64));
-        if (versionBase64) version.push(atob(versionBase64));
-      } else if (type === featureKey) {
-        if (productBase64) feature.push(atob(productBase64));
-      }
-    });
-  };
-
-  extractCapability();
 
   // Clearing the block's content
   block.innerHTML = '';
@@ -57,7 +40,7 @@ export default async function decorate(block) {
   if (toolTipElement?.textContent?.trim()) {
     headerDiv
       .querySelector('h1,h2,h3,h4,h5,h6')
-      ?.insertAdjacentHTML('beforeend', '<div class="tooltip-placeholder"></div>');
+      ?.insertAdjacentHTML('afterend', '<div class="tooltip-placeholder"></div>');
     const tooltipElem = headerDiv.querySelector('.tooltip-placeholder');
     const tooltipConfig = {
       content: toolTipElement.textContent.trim(),
@@ -70,18 +53,57 @@ export default async function decorate(block) {
 
   await decorateIcons(headerDiv);
 
-  try {
-    await loadIms();
-  } catch {
-    // eslint-disable-next-line no-console
-    console.warn('Adobe IMS not available.');
-  }
+  /**
+   * Removes duplicate items from an array of products/solutions (with sub-solutions)
+   * @returns {Array} - Array of unique products.
+   */
+  const removeProductDuplicates = () => {
+    const filteredProducts = [];
+    for (let outerIndex = 0; outerIndex < products.length; outerIndex += 1) {
+      const currentItem = products[outerIndex];
+      let isDuplicate = false;
+      for (let innerIndex = 0; innerIndex < products.length; innerIndex += 1) {
+        if (outerIndex !== innerIndex && products[innerIndex].startsWith(currentItem)) {
+          isDuplicate = true;
+          break;
+        }
+      }
+      if (!isDuplicate) {
+        filteredProducts.push(products[outerIndex]);
+      }
+    }
+    return filteredProducts;
+  };
+
+  /**
+   * Extracts capabilities from a comma-separated string and populates relevant arrays.
+   * Existence of variables declared on top: capabilities, productKey, featureKey, products, versions, features.
+   */
+  const extractCapability = () => {
+    const items = capabilities.split(',');
+    items.forEach((item) => {
+      const [type, productBase64, subsetBase64] = item.split('/');
+      if (productBase64) {
+        const decryptedProduct = atob(productBase64);
+        if (!products.includes(decryptedProduct)) {
+          products.push(decryptedProduct);
+        }
+      }
+      if (type === productKey) {
+        if (subsetBase64) versions.push(atob(subsetBase64));
+      } else if (type === featureKey) {
+        if (subsetBase64) features.push(atob(subsetBase64));
+      }
+    });
+  };
+
+  extractCapability();
 
   const param = {
     contentType: contentType && contentType.toLowerCase().split(','),
-    product: product.length ? [...new Set(product)] : null,
-    feature: feature.length ? [...new Set(feature)] : null,
-    version: version.length ? [...new Set(version)] : null,
+    product: products.length ? removeProductDuplicates(products) : null,
+    feature: features.length ? [...new Set(features)] : null,
+    version: versions.length ? [...new Set(versions)] : null,
     role: role && role.toLowerCase().split(','),
     level: level && level.toLowerCase().split(','),
     sortCriteria,
@@ -108,7 +130,6 @@ export default async function decorate(block) {
         block.appendChild(contentDiv);
         /* Hide Tooltip while scrolling the cards layout */
         hideTooltipOnScroll(contentDiv);
-        decorateIcons(block);
       }
     })
     .catch((err) => {

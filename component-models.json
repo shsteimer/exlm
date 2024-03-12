@@ -11,7 +11,7 @@
         "multi": false
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "fileReferenceAlt",
         "value": "",
@@ -116,7 +116,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "eyebrow",
         "value": "",
@@ -124,7 +124,7 @@
         "description": "Sets the small pre-title above the title."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "title",
         "value": "",
@@ -165,7 +165,7 @@
         ]
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "longDescr",
         "value": "",
@@ -173,7 +173,7 @@
         "description": "The description shown in Desktop and Tablet view."
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "shortDescr",
         "value": "",
@@ -199,7 +199,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta1Text",
         "value": "",
@@ -207,7 +207,7 @@
         "description": "Text to be shown inside button."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta1",
         "value": "",
@@ -233,7 +233,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta2Text",
         "value": "",
@@ -241,7 +241,219 @@
         "description": "Text to be shown inside button."
       },
       {
-        "component": "text-input",
+        "component": "text",
+        "valueType": "string",
+        "name": "cta2",
+        "value": "",
+        "label": "Second CTA Link",
+        "description": "What link to open when clicking the button."
+      }
+    ]
+  },
+  {
+    "id": "detailed-teaser",
+    "fields": [
+      {
+        "component": "reference",
+        "valueType": "string",
+        "name": "fileReference",
+        "label": "Background Image",
+        "multi": false
+      },
+      {
+        "component": "multiselect",
+        "name": "classes",
+        "label": "Style",
+        "valueType": "string",
+        "required": true,
+        "maxSize": 2,
+        "options": [
+          {
+            "name": "Theme",
+            "children": [
+              {
+                "name": "Light",
+                "value": "light"
+              },
+              {
+                "name": "Dark",
+                "value": "dark"
+              }
+            ]
+          },
+          {
+            "name": "Alignment",
+            "children": [
+              {
+                "name": "Left",
+                "value": "left"
+              },
+              {
+                "name": "Right",
+                "value": "right"
+              }
+            ]
+          }
+        ]
+      },
+      {
+        "component": "reference",
+        "valueType": "string",
+        "name": "eyebrow_logo",
+        "label": "Logo Image",
+        "description": "Optional Logo above eyebrow.",
+        "multi": false
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "eyebrow_logoAlt",
+        "value": "",
+        "label": "Logo Image alt text",
+        "description": "A descriptive text of the logo image."
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "eyebrow_title",
+        "value": "",
+        "label": "Eyebrow Main Title",
+        "description": "Sets the small Eyebrow above the title."
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "eyebrow_subtitle",
+        "value": "",
+        "label": "Eybrow Sub Title",
+        "description": "Second, smaller eyebrow line."
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "title",
+        "value": "",
+        "label": "Heading",
+        "description": "Sets the main title of the teaser."
+      },
+      {
+        "component": "select",
+        "valueType": "string",
+        "name": "titleType",
+        "value": "h3",
+        "label": "Heading Type",
+        "options": [
+          {
+            "name": "H1",
+            "value": "h1"
+          },
+          {
+            "name": "H2",
+            "value": "h2"
+          },
+          {
+            "name": "H3",
+            "value": "h3"
+          },
+          {
+            "name": "H4",
+            "value": "h4"
+          },
+          {
+            "name": "H5",
+            "value": "h5"
+          },
+          {
+            "name": "H6",
+            "value": "h6"
+          }
+        ]
+      },
+      {
+        "component": "richtext",
+        "valueType": "string",
+        "name": "description",
+        "value": "",
+        "label": "Teaser Text"
+      },
+      {
+        "component": "reference",
+        "valueType": "string",
+        "name": "subject",
+        "label": "Subject Image",
+        "description": "Optional Subject Image.",
+        "multi": false
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "subjectAlt",
+        "value": "",
+        "label": "Subject Alt Text",
+        "description": "A descriptive text of the subject image."
+      },
+      {
+        "component": "select",
+        "name": "cta1Type",
+        "value": "primary",
+        "label": "First CTA Type",
+        "description": "'Primary' will render button filled, 'Secondary' with an outline.",
+        "valueType": "string",
+        "options": [
+          {
+            "name": "Primary",
+            "value": "primary"
+          },
+          {
+            "name": "Secondary",
+            "value": "secondary"
+          }
+        ]
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "cta1Text",
+        "value": "",
+        "label": "First CTA Text",
+        "description": "Text to be shown inside button."
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "cta1",
+        "value": "",
+        "label": "First CTA Link",
+        "description": "What link to open when clicking the button."
+      },
+      {
+        "component": "select",
+        "name": "cta2Type",
+        "value": "primary",
+        "label": "Second CTA Type",
+        "description": "'Primary' will render button filled, 'Secondary' with an outline.",
+        "valueType": "string",
+        "options": [
+          {
+            "name": "Primary",
+            "value": "primary"
+          },
+          {
+            "name": "Secondary",
+            "value": "secondary"
+          }
+        ]
+      },
+      {
+        "component": "text",
+        "valueType": "string",
+        "name": "cta2Text",
+        "value": "",
+        "label": "Second CTA Text",
+        "description": "Text to be shown inside button."
+      },
+      {
+        "component": "text",
         "valueType": "string",
         "name": "cta2",
         "value": "",
@@ -254,7 +466,7 @@
     "id": "title",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "jcr:title",
         "value": "",
@@ -292,13 +504,6 @@
             "value": "h6"
           }
         ]
-      },
-      {
-        "component": "text-input",
-        "valueType": "string",
-        "name": "href",
-        "value": "",
-        "label": "Link"
       }
     ]
   },
@@ -313,7 +518,7 @@
         "multi": false
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "alt",
         "value": "Default alt",
@@ -325,14 +530,14 @@
     "id": "button",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "href",
         "value": "",
         "label": "Link"
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "text",
         "value": "",
@@ -396,14 +601,14 @@
         "multi": false
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cardIconAlt",
         "label": "Icon Description",
         "description": "Sets the Card icon's alternative text"
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cardHeading",
         "value": "",
@@ -444,7 +649,7 @@
         ]
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "cardDescription",
         "value": "",
@@ -452,7 +657,7 @@
         "description": "Sets the description for Card."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cardLinkText",
         "value": "",
@@ -460,7 +665,7 @@
         "description": "Sets the link text for Card."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cardLink",
         "value": "",
@@ -473,14 +678,14 @@
     "id": "columns",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "number",
         "name": "columns",
         "value": "",
         "label": "Columns"
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "number",
         "name": "rows",
         "value": "",
@@ -492,7 +697,7 @@
     "id": "curated-cards",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -533,7 +738,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "tooltip",
         "value": "",
@@ -541,7 +746,7 @@
         "description": "Sets the tooltip."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "linkText",
         "value": "",
@@ -549,7 +754,7 @@
         "description": "Sets the text for link."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "link",
         "value": "",
@@ -595,7 +800,7 @@
       },
       {
         "component": "aem-tag",
-        "name": "cq:tags",
+        "name": "tags",
         "label": "Solution(s) or Feature(s)",
         "valueType": "string",
         "rootPath": "/content/cq:tags/exl",
@@ -686,7 +891,7 @@
         "multi": false
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "fileReferenceAlt",
         "value": "",
@@ -760,7 +965,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "eyebrow",
         "value": "",
@@ -768,7 +973,7 @@
         "description": "Sets the small pre-title above the title."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "title",
         "value": "",
@@ -809,7 +1014,7 @@
         ]
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "longDescr",
         "value": "",
@@ -817,7 +1022,7 @@
         "description": "The description shown in Desktop and Tablet view."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta1Text",
         "value": "",
@@ -825,7 +1030,7 @@
         "description": "Text to be shown inside button."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta1",
         "value": "",
@@ -833,7 +1038,25 @@
         "description": "What link to open when clicking the button."
       },
       {
-        "component": "text-input",
+        "component": "select",
+        "name": "linkType",
+        "value": "link",
+        "label": "Link Type",
+        "description": "Link will render a normal Anchor button, video will render a video button that opens the video player when clicked.",
+        "valueType": "string",
+        "options": [
+          {
+            "name": "Link",
+            "value": "link"
+          },
+          {
+            "name": "Video",
+            "value": "video"
+          }
+        ]
+      },
+      {
+        "component": "text",
         "valueType": "string",
         "name": "cta2Text",
         "value": "",
@@ -854,7 +1077,7 @@
         "multi": false
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "fileReferenceAlt",
         "value": "",
@@ -928,7 +1151,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "eyebrow",
         "value": "",
@@ -936,7 +1159,7 @@
         "description": "Sets the small pre-title above the title."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "title",
         "value": "",
@@ -977,7 +1200,7 @@
         ]
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "longDescr",
         "value": "",
@@ -985,59 +1208,15 @@
         "description": "The description shown in Desktop and Tablet view."
       },
       {
-        "component": "select",
-        "name": "cta1Type",
-        "value": "primary",
-        "label": "First CTA Type",
-        "description": "'Primary' will render button filled, 'Secondary' with an outline.",
-        "valueType": "string",
-        "options": [
-          {
-            "name": "Primary",
-            "value": "primary"
-          },
-          {
-            "name": "Secondary",
-            "value": "secondary"
-          }
-        ]
-      },
-      {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta1Text",
         "value": "",
-        "label": "First CTA Text",
+        "label": "Sign in CTA text",
         "description": "Text to be shown inside button."
       },
       {
-        "component": "text-input",
-        "valueType": "string",
-        "name": "cta1",
-        "value": "",
-        "label": "First CTA Link",
-        "description": "What link to open when clicking the button."
-      },
-      {
-        "component": "select",
-        "name": "cta2Type",
-        "value": "primary",
-        "label": "Second CTA Type",
-        "description": "'Primary' will render button filled, 'Secondary' with an outline.",
-        "valueType": "string",
-        "options": [
-          {
-            "name": "Primary",
-            "value": "primary"
-          },
-          {
-            "name": "Secondary",
-            "value": "secondary"
-          }
-        ]
-      },
-      {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta2Text",
         "value": "",
@@ -1045,7 +1224,7 @@
         "description": "Text to be shown inside button."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta2",
         "value": "",
@@ -1058,7 +1237,7 @@
     "id": "video-embed",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "videoUrl",
         "value": "",
@@ -1071,7 +1250,7 @@
     "id": "secondary-search",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -1112,7 +1291,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "searchBar",
         "value": "",
@@ -1129,7 +1308,7 @@
     "id": "accordion",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -1165,7 +1344,7 @@
         ]
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "body",
         "value": "",
@@ -1184,7 +1363,7 @@
         "description": "The media image"
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "fileReferenceAlt",
         "value": "",
@@ -1208,7 +1387,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "eyebrow",
         "value": "",
@@ -1216,7 +1395,7 @@
         "description": "Sets the small pre-title above the title."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "title",
         "value": "",
@@ -1256,7 +1435,7 @@
         ]
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "description",
         "value": "",
@@ -1281,7 +1460,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta1Text",
         "value": "",
@@ -1289,7 +1468,7 @@
         "description": "Text to be shown inside button."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta1",
         "value": "",
@@ -1315,7 +1494,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta2Text",
         "value": "",
@@ -1323,7 +1502,7 @@
         "description": "Text to be shown inside button."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "cta2",
         "value": "",
@@ -1336,7 +1515,7 @@
     "id": "authorable-card",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -1377,7 +1556,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "tooltip",
         "value": "",
@@ -1385,7 +1564,7 @@
         "description": "Sets the tooltip."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "linkText",
         "value": "",
@@ -1393,7 +1572,7 @@
         "description": "Sets the text for link."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "link",
         "value": "",
@@ -1406,7 +1585,7 @@
     "id": "authored-card",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "contentURL",
         "value": "",
@@ -1419,20 +1598,28 @@
     "id": "browse-filters",
     "fields": [
       {
-        "component": "text-input",
+        "component": "aem-tag",
+        "name": "solutions",
+        "label": "Results solution filter",
+        "valueType": "string",
+        "rootPath": "/content/cq:tags/exl/solution",
+        "description": "Optional - filter results to specific solution(s)."
+      },
+      {
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
-        "label": "Heading",
-        "description": "Sets the heading for topics."
+        "label": "Topics heading",
+        "description": "Sets the headings for topics."
       },
       {
         "component": "aem-tag",
-        "name": "cq:tags",
-        "label": "Topics & Features",
+        "name": "tags",
+        "label": "Topics buttons",
         "valueType": "string",
         "rootPath": "/content/cq:tags/exl",
-        "description": "Select up to 15 topics."
+        "description": "Select up to 15 topics or features."
       }
     ]
   },
@@ -1440,7 +1627,7 @@
     "id": "featured-cards",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "name": "heading",
         "value": "",
         "label": "Heading",
@@ -1481,7 +1668,7 @@
         ]
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "name": "description",
         "value": "",
         "label": "Description",
@@ -1526,7 +1713,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "name": "linkText",
         "value": "",
         "label": "Link Text",
@@ -1534,12 +1721,41 @@
         "description": "Sets the text for link."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "name": "link",
         "value": "",
         "label": "Link URL",
         "valueType": "string",
         "description": "Sets the text url."
+      },
+      {
+        "component": "text",
+        "name": "keyword",
+        "value": "",
+        "label": "Keyword",
+        "valueType": "string",
+        "description": "Keyword for filtering the featured card data"
+      },
+      {
+        "component": "radio-group",
+        "name": "sortBy",
+        "value": "RELEVANCE",
+        "label": "Sort by",
+        "valueType": "string",
+        "options": [
+          {
+            "name": "Relevance",
+            "value": "RELEVANCE"
+          },
+          {
+            "name": "Most recent",
+            "value": "MOST_RECENT"
+          },
+          {
+            "name": "Most popular",
+            "value": "MOST_POPULAR"
+          }
+        ]
       }
     ]
   },
@@ -1547,7 +1763,7 @@
     "id": "events-cards",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -1588,7 +1804,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "tooltip",
         "value": "",
@@ -1596,7 +1812,7 @@
         "description": "Sets the tooltip."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "linkText",
         "value": "",
@@ -1604,7 +1820,7 @@
         "description": "Sets the text for link."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "link",
         "value": "",
@@ -1613,7 +1829,7 @@
       },
       {
         "component": "aem-tag",
-        "name": "cq:tags",
+        "name": "tags",
         "label": "Solution(s)",
         "valueType": "string",
         "rootPath": "/content/cq:tags/exl/solution",
@@ -1625,7 +1841,7 @@
     "id": "adls-cards",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -1666,7 +1882,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "tooltip",
         "value": "",
@@ -1674,7 +1890,7 @@
         "description": "Sets the tooltip."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "linkText",
         "value": "",
@@ -1682,7 +1898,7 @@
         "description": "Sets the text for link."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "link",
         "value": "",
@@ -1697,12 +1913,16 @@
         "description": "All are included if no selection is made",
         "options": [
           {
-            "name": "Adobe Commerce (Magento)",
-            "value": "Adobe Commerce (Magento)"
+            "name": "AEM Assets",
+            "value": "AEM Assets"
           },
           {
-            "name": "Adobe Workfront",
-            "value": "Adobe Workfront"
+            "name": "AEM Forms",
+            "value": "AEM Forms"
+          },
+          {
+            "name": "AEM Sites",
+            "value": "AEM Sites"
           },
           {
             "name": "Analytics",
@@ -1721,20 +1941,20 @@
             "value": "Campaign Standard"
           },
           {
-            "name": "Experience Cloud",
-            "value": "Experience Cloud"
+            "name": "Commerce",
+            "value": "Commerce"
           },
           {
-            "name": "Experience Manager Assets (DAM)",
-            "value": "Experience Manager Assets (DAM)"
+            "name": "Content Supply Chain",
+            "value": "Content Supply Chain"
           },
           {
-            "name": "Experience Manager Forms",
-            "value": "Experience Manager Forms"
+            "name": "Customer Journey Analytics",
+            "value": "Customer Journey Analytics"
           },
           {
-            "name": "Experience Manager Sites (CMS)",
-            "value": "Experience Manager Sites (CMS)"
+            "name": "Experience Cloud Integrations",
+            "value": "Experience Cloud Integrations"
           },
           {
             "name": "Experience Platform",
@@ -1749,8 +1969,16 @@
             "value": "Marketo Engage"
           },
           {
+            "name": "Real-Time CDP",
+            "value": "Real-Time CDP"
+          },
+          {
             "name": "Target",
             "value": "Target"
+          },
+          {
+            "name": "Workfront",
+            "value": "Workfront"
           }
         ]
       },
@@ -1811,7 +2039,7 @@
     "id": "tabbed-cards",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -1852,7 +2080,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "tooltip",
         "value": "",
@@ -1923,14 +2151,14 @@
     "id": "tab",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "title",
         "value": "",
         "label": "Heading"
       },
       {
-        "component": "text-area",
+        "component": "richtext",
         "valueType": "string",
         "name": "content",
         "value": "",
@@ -1942,7 +2170,7 @@
     "id": "recommended-courses",
     "fields": [
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "heading",
         "value": "",
@@ -1983,7 +2211,7 @@
         ]
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "tooltip",
         "value": "",
@@ -1991,7 +2219,7 @@
         "description": "Sets the tooltip."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "linkText",
         "value": "",
@@ -1999,7 +2227,7 @@
         "description": "Sets the text for link."
       },
       {
-        "component": "text-input",
+        "component": "text",
         "valueType": "string",
         "name": "link",
         "value": "",

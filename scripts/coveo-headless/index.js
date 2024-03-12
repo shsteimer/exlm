@@ -1,5 +1,22 @@
 import buildHeadlessSearchEngine from './engine.js';
 import loadCoveoToken from '../data-service/coveo/coveo-token-service.js';
+import { fetchLanguagePlaceholders } from '../scripts.js';
+
+/* Fetch data from the Placeholder.json */
+let placeholders = {};
+try {
+  placeholders = await fetchLanguagePlaceholders();
+} catch (err) {
+  // eslint-disable-next-line no-console
+  console.error('Error fetching placeholders:', err);
+}
+
+const locales = new Map([
+  ['es', 'es-ES'],
+  ['pt-br', 'pt-BR'],
+  ['zh-hans', 'zh-CN'],
+  ['zh-hant', 'zh-TW'],
+]);
 
 const coveoToken = await loadCoveoToken();
 
@@ -9,13 +26,14 @@ function configureSearchHeadlessEngine({ module, searchEngine, searchHub, contex
   });
   const context = contextObject ? module.loadContextActions(searchEngine).setContext(contextObject) : null;
   const searchConfiguration = module.loadSearchConfigurationActions(searchEngine).updateSearchConfiguration({
-    locale: document.documentElement.lang,
+    locale: locales.get(document.querySelector('html').lang) || document.querySelector('html').lang || 'en',
     searchHub,
   });
   const fields = module
     .loadFieldActions(searchEngine)
     .registerFieldsToInclude([
       'el_solution',
+      'el_id',
       'el_type',
       'el_contenttype',
       'type',
@@ -100,7 +118,7 @@ export default async function initiateCoveoHeadlessSearch({
 
         const headlessTypeFacet = module.buildFacet(headlessSearchEngine, {
           options: {
-            field: 'el_type',
+            field: 'el_contenttype',
           },
           numberOfValues: 8,
         });
@@ -221,14 +239,21 @@ export default async function initiateCoveoHeadlessSearch({
         window.headlessSearchActionCreators = headlessSearchActionCreators;
         window.logSearchboxSubmit = logSearchboxSubmit;
 
+        /* TODO: Sorting segments to be extracted & restructured and incorporate them into the browse filters, as this file serves coveo engine methods */
+        const sortLabel = {
+          relevance: placeholders.filterSortRelevanceLabel,
+          popularity: placeholders.filerSortPopularityLabel,
+          newest: placeholders.filterSortNewestLabel,
+          oldest: placeholders.filterSortOldestLabel,
+        };
         const sortWrapperEl = document.createElement('div');
         sortWrapperEl.classList.add('sort-dropdown-content');
 
         const sortingOptions = [
-          { label: 'Relevance', sortCriteria: 'relevancy' },
-          { label: 'Popularity', sortCriteria: 'el_view_count descending' },
-          { label: 'Newest', sortCriteria: 'descending' },
-          { label: 'Oldest', sortCriteria: 'ascending' },
+          { label: sortLabel.relevance, sortCriteria: 'relevancy' },
+          { label: sortLabel.popularity, sortCriteria: 'el_view_count descending' },
+          { label: sortLabel.newest, sortCriteria: 'descending' },
+          { label: sortLabel.oldest, sortCriteria: 'ascending' },
         ];
 
         sortingOptions.forEach((option) => {
@@ -254,20 +279,20 @@ export default async function initiateCoveoHeadlessSearch({
             // eslint-disable-next-line
             switch (scValue) {
               case 'relevancy':
-                sortBtn.innerHTML = 'Relevance';
-                criteria = [['Relevance', module.buildRelevanceSortCriterion()]];
+                sortBtn.innerHTML = sortLabel.relevance;
+                criteria = [[sortLabel.relevance, module.buildRelevanceSortCriterion()]];
                 break;
               case '@el_view_count descending':
-                sortBtn.innerHTML = 'Popularity';
-                criteria = [['Popularity', module.buildFieldSortCriterion('el_view_count', 'descending')]];
+                sortBtn.innerHTML = sortLabel.popularity;
+                criteria = [[sortLabel.popularity, module.buildFieldSortCriterion('el_view_count', 'descending')]];
                 break;
               case 'date descending':
-                sortBtn.innerHTML = 'Newest';
-                criteria = [['Newest', module.buildDateSortCriterion('descending')]];
+                sortBtn.innerHTML = sortLabel.newest;
+                criteria = [[sortLabel.newest, module.buildDateSortCriterion('descending')]];
                 break;
               case 'date ascending':
-                sortBtn.innerHTML = 'Oldest';
-                criteria = [['Oldest', module.buildDateSortCriterion('ascending')]];
+                sortBtn.innerHTML = sortLabel.oldest;
+                criteria = [[sortLabel.oldest, module.buildDateSortCriterion('ascending')]];
                 break;
             }
           }
@@ -282,6 +307,7 @@ export default async function initiateCoveoHeadlessSearch({
         if (sortAnchors.length > 0) {
           sortAnchors.forEach((anchor) => {
             const anchorCaption = anchor.getAttribute('data-sort-caption');
+            const anchorSortCriteria = anchor.getAttribute('data-sort-criteria');
 
             if (anchorCaption === sortBtn.innerHTML) {
               anchor.classList.add('selected');
@@ -297,17 +323,17 @@ export default async function initiateCoveoHeadlessSearch({
               sortBtn.innerHTML = anchorCaption;
 
               // eslint-disable-next-line
-              switch (anchor.innerHTML) {
-                case 'Relevance':
+              switch (anchorSortCriteria) {
+                case 'relevancy':
                   headlessBuildSort.sortBy(module.buildRelevanceSortCriterion());
                   break;
-                case 'Popularity':
+                case 'el_view_count descending':
                   headlessBuildSort.sortBy(module.buildFieldSortCriterion('el_view_count', 'descending'));
                   break;
-                case 'Newest':
+                case 'descending':
                   headlessBuildSort.sortBy(module.buildDateSortCriterion('descending'));
                   break;
-                case 'Oldest':
+                case 'ascending':
                   headlessBuildSort.sortBy(module.buildDateSortCriterion('ascending'));
                   break;
               }

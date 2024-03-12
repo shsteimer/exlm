@@ -14,17 +14,18 @@ export const createTooltip = (container, element, config) => {
   const handleTooltipEvent = (event) => {
     try {
       const tooltipText = element.querySelector('.tooltip-text');
-      const isDesktopLg = window.matchMedia('(min-width: 1200px)').matches;
       if (event.type === 'mouseover' || event.type === 'mouseenter' || event.type === 'click') {
         tooltipText.classList.add('tooltip-visible');
         if (position === 'top') {
           const topSpacer = 5;
-          const leftSpacer = 4;
+          const leftSpacer = 5;
           tooltipText.style.top = `${element.offsetTop - container.scrollTop - tooltipText.offsetHeight - topSpacer}px`;
           tooltipText.style.left = `${element.offsetLeft - container.scrollLeft + leftSpacer}px`;
         } else {
-          const topSpacer = isDesktopLg ? 20 : 12;
-          tooltipText.style.top = `${element.offsetTop + tooltipText.offsetHeight / 2 + topSpacer}px`;
+          const topSpacer = 3;
+          tooltipText.style.top = `${
+            element.offsetTop - tooltipText.offsetHeight / 2 + element.offsetHeight + topSpacer
+          }px`;
           tooltipText.style.left = `${element.offsetLeft + element.offsetWidth}px`;
         }
       } else if (event.type === 'mouseout' || event.type === 'mouseleave') {

@@ -89,6 +89,22 @@
       }
     }
 
+    tfoot {
+      margin-top: 1em;
+
+      td {
+        border: none;
+      }
+
+      div {
+        width: 100%;
+      }
+
+      ul {
+        list-style: disc;
+      }
+    }
+
     tbody {
       vertical-align: middle;
       border-color: inherit;

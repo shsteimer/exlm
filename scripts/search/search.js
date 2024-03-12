@@ -1,35 +1,29 @@
-import { htmlToElement, loadIms } from '../scripts.js';
+import { getMetadata } from '../lib-franklin.js';
+import { htmlToElement, loadIms, getLanguageCode } from '../scripts.js';
 import SearchDelegate from './search-delegate.js';
 import { searchUrl } from '../urls.js';
 
-// Extracts the language code from the provided URL string
-const extractLanguageCodeFromURL = (urlString) => {
-  const url = new URL(urlString);
-  const pathParts = url.pathname.split('/');
-  const globalIndex = pathParts.indexOf('global');
-  const languageCode = globalIndex !== -1 && globalIndex + 1 < pathParts.length ? pathParts[globalIndex + 1] : 'en';
-  return languageCode;
-};
+// Get language code from URL
+const languageCode = await getLanguageCode();
+// Get solution from metadata
+const solution = getMetadata('solution')?.split(',')[0].trim();
 
 // Redirects to the search page based on the provided search input and filters
 export const redirectToSearchPage = (searchInput, filters = '') => {
-  const languageCode = extractLanguageCodeFromURL(window.location.href);
   const baseTargetUrl = searchUrl;
   let targetUrlWithLanguage = `${baseTargetUrl}?lang=${languageCode}`;
-
+  const filterValue = filters && filters.toLowerCase() === 'all' ? '' : filters;
   if (searchInput) {
     const trimmedSearchInput = encodeURIComponent(searchInput.trim());
-    const filterValue = filters && filters.toLowerCase() === 'all' ? '' : filters;
-
-    if (trimmedSearchInput === '') {
-      targetUrlWithLanguage += `&f:@el_contenttype=${encodeURIComponent(filterValue ? `[${filterValue}]` : '[]')}`;
-    } else {
-      targetUrlWithLanguage += `#q=${trimmedSearchInput}`;
-
-      if (filterValue) {
-        targetUrlWithLanguage += `&f:@el_contenttype=${encodeURIComponent(`[${filterValue}]`)}`;
-      }
-    }
+    targetUrlWithLanguage += `#q=${trimmedSearchInput}`;
+  } else {
+    targetUrlWithLanguage += '#sort=relevancy';
+  }
+  if (filterValue) {
+    targetUrlWithLanguage += `&f:@el_contenttype=${encodeURIComponent(`[${filterValue}]`)}`;
+  }
+  if (solution) {
+    targetUrlWithLanguage += `&f:el_product=${encodeURIComponent(`[${solution}]`)}`;
   }
 
   window.location.href = targetUrlWithLanguage;
@@ -56,8 +50,9 @@ export default class Search {
     }
   }
 
-  configureAutoComplete({ searchOptions }) {
+  configureAutoComplete({ searchOptions, showSearchSuggestions = true }) {
     this.searchOptions = searchOptions || [];
+    this.showSearchSuggestions = showSearchSuggestions;
     const [firstOption = ''] = this.searchOptions;
     this.selectedSearchOption = firstOption;
     this.canHideSearchOptions = false;
@@ -76,13 +71,13 @@ export default class Search {
     this.searchSuggestionsKeydown = this.onSearchSuggestionsKeydown.bind(this);
     this.searchSuggestionsClick = this.onSearchSuggestionsClick.bind(this);
     this.handleSearchInputClick = this.onSearchInputClick.bind(this);
-    this.handleSearchInputKeyup = this.onSearchInputKeup.bind(this);
+    this.handleSearchInputKeyup = this.onSearchInputKeyup.bind(this);
     this.searchKeydown = this.onSearchInputKeydown.bind(this);
     this.hideSearchSuggestions = this.onHideSearchSuggestions.bind(this);
     this.selectSearchSuggestion = this.handleSearchSuggestion.bind(this);
     this.savedDefaultSuggestions = null;
     this.setupAutoCompleteEvents();
-    this.callbackFn = this.fetchInitialSuggestions;
+    this.callbackFn = this.showSearchSuggestions ? this.fetchInitialSuggestions : null;
   }
 
   setupAutoCompleteEvents() {
@@ -261,7 +256,7 @@ export default class Search {
     }
   }
 
-  async onSearchInputKeup(e) {
+  async onSearchInputKeyup(e) {
     const searchText = e.target.value;
     const textIsEmptied = this.searchQuery.length && searchText.length === 0;
     this.searchQuery = e.target.value;
@@ -274,8 +269,11 @@ export default class Search {
       }
       return;
     }
-
     this.clearSearchIcon.classList.add('search-icon-show');
+
+    if (!this.showSearchSuggestions) {
+      return;
+    }
     const suggestions = await this.fetchSearchSuggestions(this.searchQuery);
     const { completions = [] } = suggestions;
     if (completions.length > 0) {

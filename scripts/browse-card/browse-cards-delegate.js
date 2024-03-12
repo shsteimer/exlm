@@ -7,6 +7,16 @@ import BrowseCardsADLSAdaptor from './browse-cards-adls-adaptor.js';
 import { CONTENT_TYPES, COMMUNITY_SEARCH_FACET, RECOMMENDED_COURSES_CONSTANTS } from './browse-cards-constants.js';
 import { coveoSearchResultsUrl, liveEventsUrl, adlsUrl, pathsUrl } from '../urls.js';
 import PathsDataService from '../data-service/paths-data-service.js';
+import { getPathDetails } from '../scripts.js';
+
+const { lang } = getPathDetails();
+
+const locales = new Map([
+  ['es', 'es-ES'],
+  ['pt-br', 'pt-BR'],
+  ['zh-hans', 'zh-CN'],
+  ['zh-hant', 'zh-TW'],
+]);
 /**
  * @module BrowseCardsDelegate
  * @description A module that handles the delegation of fetching card data based on content types.
@@ -89,7 +99,7 @@ const BrowseCardsDelegate = (() => {
     const dataSource = {
       url: coveoSearchResultsUrl,
       param: {
-        locale: document.querySelector('html').lang || 'en',
+        locale: locales.get(document.querySelector('html').lang) || document.querySelector('html').lang || 'en',
         searchHub: 'Experience League Learning Hub',
         numberOfResults: param.noOfResults,
         excerptLength: 200,
@@ -98,6 +108,7 @@ const BrowseCardsDelegate = (() => {
         filterField: '@foldingcollection',
         parentField: '@foldingchild',
         childField: '@foldingparent',
+        ...(param.q ? { q: param.q } : ''),
         ...(param.feature ? constructCoveoAdvancedQuery() : ''),
         ...(!param.feature ? { facets: constructCoveoFacet(facets) } : ''),
       },
@@ -137,10 +148,12 @@ const BrowseCardsDelegate = (() => {
    * @private
    */
   const constructADLSSearchParams = () => {
+    const languageParamValue = lang === 'ja' ? 'Japanese' : 'English';
     const urlSearchParams = new URLSearchParams();
     urlSearchParams.append('trainingMethod', 'Live Instructor Courses');
     urlSearchParams.append('pageIndex', '1');
     urlSearchParams.append('learningType', 'catalog');
+    urlSearchParams.append('language', languageParamValue);
     if (param.solutions) {
       urlSearchParams.append('products', param.solutions);
     }
@@ -179,10 +192,11 @@ const BrowseCardsDelegate = (() => {
    * @private
    */
   const constructPathsSearchParams = () => {
+    const languageParam = locales.get(lang) || lang;
     const urlSearchParams = new URLSearchParams();
     urlSearchParams.append('page_size', '200');
     urlSearchParams.append('sort', 'Order,Solution,ID');
-    urlSearchParams.append('lang', 'en');
+    urlSearchParams.append('lang', languageParam);
     return urlSearchParams;
   };
 
@@ -216,8 +230,8 @@ const BrowseCardsDelegate = (() => {
    */
   const getServiceForContentType = (contentType) => {
     const contentTypesServices = {
-      [CONTENT_TYPES.LIVE_EVENTS.MAPPING_KEY]: handleLiveEventsService,
-      [CONTENT_TYPES.INSTRUCTOR_LED_TRANING.MAPPING_KEY]: handleADLSService,
+      [CONTENT_TYPES.LIVE_EVENT.MAPPING_KEY]: handleLiveEventsService,
+      [CONTENT_TYPES.INSTRUCTOR_LED.MAPPING_KEY]: handleADLSService,
       [RECOMMENDED_COURSES_CONSTANTS.PATHS.MAPPING_KEY]: handlePathsService,
     };
 

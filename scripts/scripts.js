@@ -15,9 +15,9 @@ import {
   decorateButtons,
   getMetadata,
   loadScript,
+  fetchPlaceholders,
 } from './lib-franklin.js';
-
-const libAnalyticsModulePromise = import('./analytics/lib-analytics.js');
+// eslint-disable-next-line import/no-cycle
 
 const LCP_BLOCKS = ['marquee']; // add your LCP blocks to the list
 
@@ -50,6 +50,49 @@ async function loadFonts() {
   } catch (e) {
     // do nothing
   }
+}
+
+/**
+ * one trust configuration setup
+ */
+function oneTrust() {
+  window.fedsConfig = window.fedsConfig || {};
+  window.fedsConfig.privacy = window.fedsConfig.privacy || {};
+  window.fedsConfig.privacy.otDomainId = `7a5eb705-95ed-4cc4-a11d-0cc5760e93db${
+    window.location.host.split('.').length === 3 ? '' : '-test'
+  }`;
+  window.fedsConfig.privacy.footerLinkSelector = '.footer [href="#onetrust"]';
+}
+
+/**
+ * Process current pathname and return details for use in language switching
+ * Considers pathnames like /en/path/to/content and /content/exl/global/en/path/to/content.html for both EDS and AEM
+ */
+export function getPathDetails() {
+  const { pathname } = window.location;
+  const extParts = pathname.split('.');
+  const ext = extParts.length > 1 ? extParts[extParts.length - 1] : '';
+  const isContentPath = pathname.startsWith('/content');
+  const parts = pathname.split('/');
+  const safeLangGet = (index) => (parts.length > index ? parts[index] : 'en');
+  // 4 is the index of the language in the path for AEM content paths like  /content/exl/global/en/path/to/content.html
+  // 1 is the index of the language in the path for EDS paths like /en/path/to/content
+  let lang = isContentPath ? safeLangGet(4) : safeLangGet(1);
+  // remove suffix from lang if any
+  if (lang.indexOf('.') > -1) {
+    lang = lang.substring(0, lang.indexOf('.'));
+  }
+  if (!lang) lang = 'en'; // default to en
+  // substring before lang
+  const prefix = pathname.substring(0, pathname.indexOf(`/${lang}`)) || '';
+  const suffix = pathname.substring(pathname.indexOf(`/${lang}`) + lang.length + 1) || '';
+  return {
+    ext,
+    prefix,
+    suffix,
+    lang,
+    isContentPath,
+  };
 }
 
 /**
@@ -130,10 +173,12 @@ function addBrowseRail(main) {
 }
 
 function addBrowseBreadCrumb(main) {
-  // add new section at the top
-  const section = document.createElement('div');
-  main.prepend(section);
-  section.append(buildBlock('browse-breadcrumb', []));
+  if (!main.querySelector('.browse-breadcrumb.block')) {
+    // add new section at the top
+    const section = document.createElement('div');
+    main.prepend(section);
+    section.append(buildBlock('browse-breadcrumb', []));
+  }
 }
 
 /**
@@ -152,6 +197,40 @@ function buildAutoBlocks(main) {
     // eslint-disable-next-line no-console
     console.error('Auto Blocking failed', error);
   }
+}
+
+/**
+ * create shadeboxes out of sections with shade-box style
+ * @param {Element} main the main container
+ */
+function buildShadeBoxes(main) {
+  main.querySelectorAll('.section.shade-box').forEach((section) => {
+    const sbContent = [];
+    const row = [];
+    [...section.children].forEach((wrapper) => {
+      const elems = [];
+      [...wrapper.children].forEach((child) => {
+        elems.push(child);
+      });
+      wrapper.remove();
+      row.push({ elems });
+    });
+    sbContent.push(row);
+    const sb = buildBlock('shade-box', sbContent);
+    const sbWrapper = document.createElement('div');
+    sbWrapper.append(sb);
+    section.append(sbWrapper);
+    decorateBlock(sb);
+    section.classList.remove('shade-box');
+  });
+}
+
+/**
+ * Builds synthetic blocks in that rely on section metadata
+ * @param {Element} main The container element
+ */
+function buildSectionBasedAutoBlocks(main) {
+  buildShadeBoxes(main);
 }
 
 /**
@@ -177,15 +256,89 @@ export function decorateExternalLinks(main) {
 }
 
 /**
+ * Links that have urls with JSON the hash, the JSON will be translated to attributes
+ * eg <a href="https://example.com#{"target":"_blank", "auth-only": "true"}">link</a>
+ * will be translated to <a href="https://example.com" target="_blank" auth-only="true">link</a>
+ * @param {HTMLElement} block
+ */
+export const decorateLinks = (block) => {
+  const links = block.querySelectorAll('a');
+  links.forEach((link) => {
+    const decodedHref = decodeURIComponent(link.getAttribute('href'));
+    const firstCurlyIndex = decodedHref.indexOf('{');
+    const lastCurlyIndex = decodedHref.lastIndexOf('}');
+    if (firstCurlyIndex > -1 && lastCurlyIndex > -1) {
+      // everything between curly braces is treated as JSON string.
+      const optionsJsonStr = decodedHref.substring(firstCurlyIndex, lastCurlyIndex + 1);
+      const fixedJsonString = optionsJsonStr.replace(/'/g, '"'); // JSON.parse function expects JSON strings to be formatted with double quotes
+      const parsedJSON = JSON.parse(fixedJsonString);
+      Object.entries(parsedJSON).forEach(([key, value]) => {
+        link.setAttribute(key.trim(), value);
+      });
+      // remove the JSON string from the hash, if JSON string is the only thing in the hash, remove the hash as well.
+      const endIndex = decodedHref.charAt(firstCurlyIndex - 1) === '#' ? firstCurlyIndex - 1 : firstCurlyIndex;
+      link.href = decodedHref.substring(0, endIndex);
+    }
+  });
+};
+
+/**
  * Check if current page is a MD Docs Page.
  * theme = docs is set in bulk metadata for docs paths.
+ * @param {string} type The type of doc page - example: docs-solution-landing,
+ *                      docs-landing, docs (optional, default value is docs)
  */
-export function isDocPage() {
+export function isDocPage(type = 'docs') {
   const theme = getMetadata('theme');
   return theme
     .split(',')
-    .map((t) => t.toLowerCase())
-    .includes('docs');
+    .map((t) => t.toLowerCase().trim())
+    .includes(type);
+}
+
+/**
+ * Check if current page is a MD Docs Article Page.
+ * theme = docs is set in bulk metadata for docs paths.
+ * @param {string} type The type of doc page - docs (optional, default value is docs)
+ */
+export const isDocArticlePage = (type = 'docs') => {
+  const theme = getMetadata('theme');
+  return theme?.toLowerCase().trim() === type;
+};
+
+/**
+ * set attributes needed for the docs pages grid to work properly
+ * @param {Element} main the main element
+ */
+function decorateContentSections(main) {
+  const contentSections = main.querySelectorAll('.section:not(.toc-container, .mini-toc-container)');
+  contentSections.forEach((row, i) => {
+    if (i === 0) {
+      row.classList.add('content-section-first');
+    }
+    if (i === contentSections.length - 1) {
+      row.classList.add('content-section-last');
+    }
+  });
+
+  main.style.setProperty('--content-sections-count', contentSections.length);
+}
+
+/**
+ * see: https://github.com/adobe-experience-league/exlm-converter/pull/208
+ * @param {HTMLElement} main
+ */
+export function decorateAnchors(main) {
+  const anchorIcons = [...main.querySelectorAll(`.icon-headding-anchor`)];
+  anchorIcons.forEach((icon) => {
+    const slugNode = icon.nextSibling;
+    const slug = slugNode?.textContent?.trim();
+    if (slug) {
+      icon.parentElement.id = slug;
+      icon.remove();
+      slugNode.remove();
+    }
+  });
 }
 
 /**
@@ -198,11 +351,14 @@ export function decorateMain(main) {
   if (!isDocPage()) {
     decorateButtons(main);
   }
+  decorateAnchors(main); // must be run before decorateIcons
   decorateIcons(main);
   decorateExternalLinks(main);
   buildAutoBlocks(main);
   decorateSections(main);
   decorateBlocks(main);
+  buildSectionBasedAutoBlocks(main);
+  decorateContentSections(main);
 }
 
 /**
@@ -210,7 +366,8 @@ export function decorateMain(main) {
  * @param {Element} doc The container element
  */
 async function loadEager(doc) {
-  document.documentElement.lang = 'en';
+  const { lang } = getPathDetails();
+  document.documentElement.lang = lang || 'en';
   decorateTemplateAndTheme();
   const main = doc.querySelector('main');
   if (main) {
@@ -229,6 +386,8 @@ async function loadEager(doc) {
   }
 }
 
+export const isHelixDomain = () => ['hlx.page', 'hlx.live'].some((sfx) => window.location.hostname.endsWith(sfx));
+
 export const locales = new Map([
   ['de', 'de_DE'],
   ['en', 'en_US'],
@@ -237,18 +396,20 @@ export const locales = new Map([
   ['it', 'it_IT'],
   ['ja', 'ja_JP'],
   ['ko', 'ko_KO'],
-  ['pt-BR', 'pt_BR'],
-  ['zh-Hans', 'zh_HANS'],
+  ['pt-br', 'pt_BR'],
+  ['zh-hans', 'zh_HANS'],
+  ['zh-hant', 'zh_HANT'],
+  ['nl', 'nl_NL'],
+  ['sv', 'sv_SE'],
 ]);
 
-let imsLoaded;
 export async function loadIms() {
-  imsLoaded =
-    imsLoaded ||
+  window.imsLoaded =
+    window.imsLoaded ||
     new Promise((resolve, reject) => {
       const timeout = setTimeout(() => reject(new Error('IMS timeout')), 5000);
       window.adobeid = {
-        client_id: 'ExperienceLeague_Dev',
+        client_id: isHelixDomain() ? 'ExperienceLeague_Dev' : 'ExperienceLeague',
         scope:
           'AdobeID,additional_info.company,additional_info.ownerOrg,avatar,openid,read_organizations,read_pc,session,account_cluster.read',
         locale: locales.get(document.querySelector('html').lang) || locales.get('en'),
@@ -263,8 +424,61 @@ export async function loadIms() {
       };
       loadScript('https://auth.services.adobe.com/imslib/imslib.min.js');
     });
-  return imsLoaded;
+  return window.imsLoaded;
 }
+
+const loadMartech = async (headerPromise, footerPromise) => {
+  let launchScriptSrc = '';
+  if (window.location.host === 'eds-stage.experienceleague.adobe.com') {
+    launchScriptSrc = 'https://assets.adobedtm.com/a7d65461e54e/6e9802a06173/launch-dbb3f007358e-staging.min.js';
+  } else if (window.location.host === 'experienceleague.adobe.com') {
+    launchScriptSrc = 'https://assets.adobedtm.com/a7d65461e54e/6e9802a06173/launch-43baf8381f4b.min.js';
+  } else {
+    launchScriptSrc = 'https://assets.adobedtm.com/a7d65461e54e/6e9802a06173/launch-e6bd665acc0a-development.min.js';
+  }
+  oneTrust();
+
+  const oneTrustPromise = loadScript('/etc.clientlibs/globalnav/clientlibs/base/privacy-standalone.js', {
+    async: true,
+    defer: true,
+  });
+
+  const launchPromise = loadScript(launchScriptSrc, {
+    async: true,
+  });
+
+  // eslint-disable-next-line import/no-cycle
+  const libAnalyticsPromise = import('./analytics/lib-analytics.js');
+
+  Promise.all([launchPromise, libAnalyticsPromise, headerPromise, footerPromise, oneTrustPromise]).then(
+    // eslint-disable-next-line no-unused-vars
+    ([launch, libAnalyticsModule, headPr, footPr]) => {
+      const { lang } = getPathDetails();
+      const { pageLoadModel, linkClickModel, pageName } = libAnalyticsModule;
+      document.querySelector('[href="#onetrust"]').addEventListener('click', (e) => {
+        e.preventDefault();
+        window.adobePrivacy.showConsentPopup();
+      });
+      pageLoadModel(lang)
+        .then((data) => {
+          window.adobeDataLayer.push(data);
+        })
+        .catch((e) => {
+          // eslint-disable-next-line no-console
+          console.error('Error getting pageLoadModel:', e);
+        });
+      localStorage.setItem('prevPage', pageName(lang));
+      const linkClicked = document.querySelectorAll('a,.view-more-less span, .language-selector-popover span');
+      linkClicked.forEach((linkElement) => {
+        linkElement.addEventListener('click', (e) => {
+          if (e.target.tagName === 'A' || e.target.tagName === 'SPAN') {
+            linkClickModel(e);
+          }
+        });
+      });
+    },
+  );
+};
 
 /**
  * Loads everything that doesn't need to be delayed.
@@ -280,36 +494,10 @@ async function loadLazy(doc) {
   if (hash && element) element.scrollIntoView();
   const headerPromise = loadHeader(doc.querySelector('header'));
   const footerPromise = loadFooter(doc.querySelector('footer'));
-
-  localStorage.setItem('prevPage', doc.title);
-
-  const launchPromise = loadScript(
-    'https://assets.adobedtm.com/a7d65461e54e/6e9802a06173/launch-e6bd665acc0a-development.min.js',
-    {
-      async: true,
-    },
-  );
-
-  Promise.all([launchPromise, libAnalyticsModulePromise, headerPromise, footerPromise]).then(
-    // eslint-disable-next-line no-unused-vars
-    ([launch, libAnalyticsModule, headPr, footPr]) => {
-      const { pageLoadModel, linkClickModel } = libAnalyticsModule;
-      window.adobeDataLayer.push(pageLoadModel());
-      const linkClicked = document.querySelectorAll('a');
-      linkClicked.forEach((linkElement) => {
-        linkElement.addEventListener('click', (e) => {
-          e.stopPropagation();
-          if (e.target.tagName === 'A') {
-            linkClickModel(e);
-          }
-        });
-      });
-    },
-  );
-
+  // disable martech if martech=off is in the query string, this is used for testing ONLY
+  if (window.location.search?.indexOf('martech=off') === -1) loadMartech(headerPromise, footerPromise);
   loadCSS(`${window.hlx.codeBasePath}/styles/lazy-styles.css`);
   loadFonts();
-
   sampleRUM('lazy');
 }
 
@@ -347,60 +535,6 @@ export function htmlToElement(html) {
   return template.content.firstElementChild;
 }
 
-export function loadPrevNextBtn() {
-  const mainDoc = document.querySelector('main > div:nth-child(1)');
-  if (!mainDoc) return;
-
-  const prevPageMeta = document.querySelector('meta[name="prev-page"]');
-  const nextPageMeta = document.querySelector('meta[name="next-page"]');
-  const prevPageMetaContent = prevPageMeta?.getAttribute('content').trim().split('.html')[0];
-  const nextPageMetaContent = nextPageMeta?.getAttribute('content').trim().split('.html')[0];
-  const PREV_PAGE = 'Previous page';
-  const NEXT_PAGE = 'Next page';
-
-  if (prevPageMeta || nextPageMeta) {
-    if (prevPageMetaContent === '' && nextPageMetaContent === '') return;
-
-    const docPagination = createTag('div', { class: 'doc-pagination' });
-    const btnGotoLeft = createTag('div', { class: 'btn-goto is-left-desktop' });
-
-    const anchorLeftAttr = {
-      href: `${prevPageMetaContent}`,
-      class: 'pagination-btn',
-    };
-    const anchorLeft = createTag('a', anchorLeftAttr);
-    const spanLeft = createTag('span', '', PREV_PAGE);
-
-    anchorLeft.append(spanLeft);
-    btnGotoLeft.append(anchorLeft);
-
-    const btnGotoRight = createTag('div', {
-      class: 'btn-goto is-right-desktop',
-    });
-
-    const anchorRightAttr = {
-      href: `${nextPageMetaContent}`,
-      class: 'pagination-btn',
-    };
-    const anchorRight = createTag('a', anchorRightAttr);
-    const spanRight = createTag('span', '', NEXT_PAGE);
-
-    anchorRight.append(spanRight);
-    btnGotoRight.append(anchorRight);
-
-    if (!prevPageMeta || prevPageMetaContent === '') {
-      anchorLeft.classList.add('is-disabled');
-    }
-
-    if (!nextPageMeta || nextPageMetaContent === '') {
-      anchorRight.classList.add('is-disabled');
-    }
-
-    docPagination.append(btnGotoLeft, btnGotoRight);
-    mainDoc.append(docPagination);
-  }
-}
-
 /**
  * Copies all meta tags to window.EXL_META
  * These are consumed by Qualtrics to pass additional data along with the feedback survey.
@@ -433,7 +567,7 @@ function loadDelayed() {
   // eslint-disable-next-line import/no-cycle
   addMetaTagsToWindow();
   // eslint-disable-next-line import/no-cycle
-  if (isDocPage()) window.setTimeout(() => import('./feedback/feedback.js'), 3000);
+  if (isDocArticlePage()) window.setTimeout(() => import('./feedback/feedback.js'), 3000);
 }
 
 /**
@@ -449,15 +583,12 @@ async function loadRails() {
   }
 }
 
-async function loadPage() {
-  await loadEager(document);
-  await loadLazy(document);
-  loadRails();
-  loadDelayed();
-  loadPrevNextBtn();
+function showBrowseBackgroundGraphic() {
+  if (isBrowsePage()) {
+    const main = document.querySelector('main');
+    main.classList.add('browse-background-img');
+  }
 }
-
-loadPage();
 
 /**
  * Helper function that converts an AEM path into an EDS path.
@@ -481,16 +612,73 @@ export const removeExtension = (pathStr) => {
   return parts.slice(0, -1).join('.');
 };
 
+// Convert the given String to Pascal Case
+export const toPascalCase = (name) => `${(name || '').charAt(0).toUpperCase()}${name.slice(1)}`;
+
 export function rewriteDocsPath(docsPath) {
   const PROD_BASE = 'https://experienceleague.adobe.com';
   const url = new URL(docsPath, PROD_BASE);
-  if (!url.pathname.startsWith('/docs')) {
+  if (!url.pathname.startsWith('/docs') || url.pathname.startsWith('/docs/courses/')) {
     return docsPath; // not a docs path, return as is
   }
-  const lang = url.searchParams.get('lang') || 'en'; // en is default
+  // eslint-disable-next-line no-use-before-define
+  const { lang } = getPathDetails();
+  const language = url.searchParams.get('lang') || lang;
   url.searchParams.delete('lang');
-  let pathname = `${lang.toLowerCase()}${url.pathname}`;
+  let pathname = `${language.toLowerCase()}${url.pathname}`;
   pathname = removeExtension(pathname); // new URLs are extensionless
   url.pathname = pathname;
   return url.toString().replace(PROD_BASE, ''); // always remove PROD_BASE if exists
+}
+
+export async function fetchLanguagePlaceholders() {
+  const { lang } = getPathDetails();
+  try {
+    // Try fetching placeholders with the specified language
+    return await fetchPlaceholders(`/${lang}`);
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.error(`Error fetching placeholders for lang: ${lang}. Will try to get en placeholders`, error);
+    // Retry without specifying a language (using the default language)
+    try {
+      return await fetchPlaceholders('/en');
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error('Error fetching placeholders:', err);
+    }
+  }
+  return {}; // default to empty object
+}
+
+export async function getLanguageCode() {
+  const { lang } = getPathDetails();
+  const { default: ffetch } = await import('./ffetch.js');
+  const langMap = await ffetch(`/languages.json`).all();
+  const langObj = langMap.find((item) => item.key === lang);
+  const langCode = langObj ? langObj.value : lang;
+  return langCode;
+}
+
+async function loadDefaultModule(jsPath) {
+  try {
+    const mod = await import(jsPath);
+    if (mod.default) await mod.default();
+  } catch (error) {
+    // eslint-disable-next-line no-console
+    console.log(`failed to load module for ${jsPath}`, error);
+  }
+}
+
+async function loadPage() {
+  await loadEager(document);
+  await loadLazy(document);
+  loadRails();
+  loadDelayed();
+  showBrowseBackgroundGraphic();
+  loadDefaultModule(`${window.hlx.codeBasePath}/scripts/prev-next-btn.js`);
+}
+
+// load the page unless DO_NOT_LOAD_PAGE is set - used for existing EXLM pages POC
+if (!window.hlx.DO_NOT_LOAD_PAGE) {
+  loadPage();
 }
